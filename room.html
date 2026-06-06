@@ -8,6 +8,17 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
   <style>
     html, body { height: 100%; overflow: hidden; }
+
+    /* Embedded stream (YouTube Live) */
+    .stream-container {
+      position: absolute; inset: 0;
+      background: #000;
+    }
+    .stream-iframe {
+      width: 100%; height: 100%; border: none; display: block;
+    }
+
+    /* Live lobby (Jitsi fallback) */
     .live-lobby {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
@@ -56,7 +67,7 @@
     </div>
   </header>
 
-  <!-- Main lobby area -->
+  <!-- Main area -->
   <div class="jitsi-container" id="jitsi-container">
 
     <!-- Shown while waiting for host to start -->
@@ -66,7 +77,15 @@
       <p>You're in the right place. The room will open automatically.</p>
     </div>
 
-    <!-- Shown when session is live -->
+    <!-- Shown when session is live with a YouTube stream URL -->
+    <div id="stream-container" class="stream-container hidden">
+      <iframe id="stream-iframe" class="stream-iframe"
+        src="" frameborder="0"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        allowfullscreen></iframe>
+    </div>
+
+    <!-- Shown when session is live but no stream URL (Jitsi fallback) -->
     <div id="live-lobby" class="live-lobby hidden">
       <div class="live-badge"><span class="dot-red"></span> LIVE NOW</div>
       <div class="lobby-title">Coach Victor is broadcasting</div>
@@ -90,7 +109,7 @@
   </footer>
 
   <div id="perm-toast" class="perm-toast hidden" role="alert">
-    🎉 Coach Victor has unmuted you — join the call and speak!
+    🎉 Coach Victor says you can speak — join the video call and unmute!
   </div>
 
   <div id="closing-overlay" class="closing-overlay hidden" role="dialog" aria-modal="true">
