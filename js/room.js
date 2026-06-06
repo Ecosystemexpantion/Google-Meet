@@ -28,7 +28,9 @@
   const streamIframe     = document.getElementById('stream-iframe');
   const liveLobby        = document.getElementById('live-lobby');
   const joinCallBtn      = document.getElementById('join-call-btn');
+  const lobbyTitle       = document.getElementById('lobby-title');
   const lobbyNameDisplay = document.getElementById('lobby-name-display');
+  const joinHint         = document.getElementById('join-hint');
   const attendanceEl     = document.getElementById('attendance-count');
   const tickerEl         = document.getElementById('ticker-text');
   const tickerCard       = document.getElementById('ticker-card');
@@ -41,13 +43,21 @@
   let handRaised    = false;
   let hasPermission = false;
   let recentJoiners = [];
+  let callWindow    = null;
 
-  // Convert any YouTube URL to embeddable format
+  // Convert any stream URL to an embeddable URL
   function toEmbedUrl(url) {
     if (!url) return null;
+    // YouTube: watch, short, live URLs
     const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]+)/);
     if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0&modestbranding=1`;
     if (url.includes('youtube.com/embed/')) return url;
+    // Twitch: channel URL → embed player
+    const tw = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)/);
+    if (tw) {
+      const parent = window.location.hostname || 'localhost';
+      return `https://player.twitch.tv/?channel=${tw[1]}&parent=${parent}&autoplay=true&muted=false`;
+    }
     return null;
   }
 
@@ -84,7 +94,24 @@
     placeholder.classList.remove('hidden');
   }
 
-  // Check initial session state
+  // After student clicks "Join" — switch the lobby to an "in-call" state
+  function showInCallState() {
+    if (lobbyTitle) lobbyTitle.textContent = 'You\'re in the video call';
+    if (lobbyNameDisplay) lobbyNameDisplay.textContent = 'Raise your hand below ✋ — come back here anytime';
+    if (joinHint) joinHint.textContent = 'Tap above to re-open the video tab.';
+    if (joinCallBtn) {
+      joinCallBtn.innerHTML = '📺 &nbsp;Re-open Video Tab';
+      joinCallBtn.onclick = () => {
+        if (callWindow && !callWindow.closed) {
+          callWindow.focus();
+        } else {
+          callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
+        }
+      };
+    }
+  }
+
+  // Initial session check
   const { data: session } = await sb.from('sessions')
     .select('is_active, stream_url')
     .eq('id', sessionId).maybeSingle();
@@ -139,7 +166,7 @@
     if (tickerCard) tickerCard.textContent = text;
   }
 
-  // Watch for speaking permission
+  // Speaking permission changes
   sb.channel(`perm:${pid}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `id=eq.${pid}` },
       (payload) => {
@@ -149,25 +176,25 @@
       })
     .subscribe();
 
-  // Watch for session state changes (stream URL updates, session end)
+  // Session state changes (stream URL update, session end)
   sb.channel(`session:${sessionId}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${sessionId}` },
       (payload) => {
         if (!payload.new.is_active) {
           showClosingMessage();
-        } else if (payload.new.stream_url && streamIframe.src !== toEmbedUrl(payload.new.stream_url)) {
+        } else if (payload.new.stream_url) {
           showStream(payload.new.stream_url);
-        } else if (!payload.new.stream_url && streamContainer.classList.contains('hidden') === false) {
+        } else if (!payload.new.stream_url && streamContainer && !streamContainer.classList.contains('hidden')) {
           showLiveLobby();
         }
       })
     .subscribe();
 
-  // Watch for session start (student arrived before host)
+  // Session start (student arrived before host started)
   sb.channel('session-start-watch')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions' },
       (payload) => {
-        if (payload.new.is_active && placeholder.classList.contains('hidden') === false) {
+        if (payload.new.is_active && !placeholder.classList.contains('hidden')) {
           if (payload.new.stream_url) {
             showStream(payload.new.stream_url);
           } else {
@@ -177,9 +204,12 @@
       })
     .subscribe();
 
-  // Jitsi fallback join button
+  // Join Jitsi fallback button
   if (joinCallBtn) {
-    joinCallBtn.addEventListener('click', () => window.open(buildJitsiUrl(), '_blank'));
+    joinCallBtn.addEventListener('click', () => {
+      callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
+      showInCallState();
+    });
   }
 
   // Hand raise
@@ -190,9 +220,11 @@
     await sb.from('participants').update({ has_raised_hand: handRaised }).eq('id', pid);
   });
 
-  // Speak button: opens Jitsi for Q&A when host grants permission
+  // Speak button — opens Jitsi for Q&A
   if (speakBtn) {
-    speakBtn.addEventListener('click', () => window.open(buildJitsiUrl(), '_blank'));
+    speakBtn.addEventListener('click', () => {
+      callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
+    });
   }
 
   function showPermissionUI() {
