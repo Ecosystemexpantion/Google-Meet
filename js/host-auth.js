@@ -18,19 +18,24 @@
     errorEl.classList.add('hidden');
     submitBtn.disabled    = true;
     submitBtn.textContent = 'Checking…';
-    const hash = await sha256(passInput.value);
-    if (hash === window.EEM26_CONFIG.HOST_PASSWORD_HASH) {
-      sessionStorage.setItem('eem26_host', 'ok');
-      window.location.href = 'host-room.html';
-    } else {
+    try {
+      if (!window.EEM26_CONFIG) throw new Error('Config not loaded');
+      const hash = await sha256(passInput.value);
+      if (hash === window.EEM26_CONFIG.HOST_PASSWORD_HASH) {
+        sessionStorage.setItem('eem26_host', 'ok');
+        window.location.href = 'host-room.html';
+        return;
+      }
       errorEl.textContent = 'Incorrect password — please try again.';
-      errorEl.classList.remove('hidden');
-      passInput.value = '';
-      passInput.focus();
-      passInput.classList.add('shake');
-      setTimeout(() => passInput.classList.remove('shake'), 500);
-      submitBtn.disabled    = false;
-      submitBtn.textContent = 'Enter Host Room';
+    } catch (err) {
+      errorEl.textContent = 'Error: ' + err.message + '. Please reload the page.';
     }
+    errorEl.classList.remove('hidden');
+    passInput.value = '';
+    passInput.focus();
+    passInput.classList.add('shake');
+    setTimeout(() => passInput.classList.remove('shake'), 500);
+    submitBtn.disabled    = false;
+    submitBtn.textContent = 'Enter Host Room';
   });
 })();
