@@ -39,6 +39,20 @@
   const permToast        = document.getElementById('perm-toast');
   const closingOverlay   = document.getElementById('closing-overlay');
   const closingReturnBtn = document.getElementById('closing-return-btn');
+  const appHint          = document.getElementById('app-hint');
+  const appStoreLink     = document.getElementById('app-store-link');
+
+  // Show app install hint on Android phones
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const isIOS     = /iPhone|iPad/i.test(navigator.userAgent);
+  if (appHint && (isAndroid || isIOS)) {
+    appHint.classList.remove('hidden');
+    if (appStoreLink && isIOS) {
+      appStoreLink.href = 'https://apps.apple.com/app/jitsi-meet/id1165103905';
+    }
+    // Dismiss hint after 12 seconds
+    setTimeout(() => appHint.classList.add('hidden'), 12000);
+  }
 
   let handRaised    = false;
   let hasPermission = false;
@@ -228,13 +242,23 @@
   }
 
   function showPermissionUI() {
-    permToast.textContent = '🎉 Coach Victor says you can speak — tap below to join the call!';
+    // Vibrate the phone so student knows even if they're watching Jitsi
+    if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 500]);
+
+    // Flash tab title so it's visible even when another tab is in focus
+    const originalTitle = document.title;
+    document.title = '🔴 Coach says you can speak! — EEM26';
+    document.addEventListener('visibilitychange', function restoreTitle() {
+      if (!document.hidden) {
+        document.title = originalTitle;
+        document.removeEventListener('visibilitychange', restoreTitle);
+      }
+    });
+
+    permToast.textContent = '🎉 Coach Victor says you can speak! Switch back here then tap below.';
     permToast.classList.remove('hidden');
-    if (speakBtn) {
-      speakBtn.textContent = '🎤 Join Call to Speak';
-      speakBtn.classList.remove('hidden');
-    }
-    setTimeout(() => permToast.classList.add('hidden'), 10000);
+    if (speakBtn) speakBtn.classList.remove('hidden');
+    setTimeout(() => permToast.classList.add('hidden'), 15000);
   }
 
   function hidePermissionUI() {
