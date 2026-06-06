@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>EEM26 Host Panel</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
+  <style>html, body { height: 100%; overflow: hidden; }</style>
+</head>
+<body class="page-host">
+
+  <header class="host-bar">
+    <div class="host-bar-left">
+      <span class="brand-chip">EEM26</span>
+      <span style="font-size:13px;color:rgba(255,255,255,.6);">Host Panel</span>
+      <div id="session-badge" class="session-badge inactive">
+        <span id="badge-dot" class="badge-dot inactive"></span>
+        <span id="badge-text">Not started</span>
+      </div>
+    </div>
+    <div class="host-bar-right">
+      <a href="index.html" target="_blank" style="font-size:12px;color:rgba(255,255,255,.5);text-decoration:none;">Student page ↗</a>
+    </div>
+  </header>
+
+  <div class="host-layout">
+
+    <div class="host-jitsi-area" id="jitsi-area">
+      <div id="host-placeholder" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.5);gap:16px;padding:32px;text-align:center;">
+        <span style="font-size:52px;">🎬</span>
+        <h3 style="font-size:18px;font-weight:600;color:rgba(255,255,255,.8);">Ready when you are</h3>
+        <p style="font-size:14px;">Click <strong style="color:var(--green);">Start Training</strong> in the panel to open the room for students.</p>
+      </div>
+    </div>
+
+    <aside class="host-panel">
+      <div class="panel-head">
+        <h3>Control Panel</h3>
+        <div class="host-stats">
+          <div class="hstat"><span id="watching-count" class="hstat-num">0</span><span class="hstat-label">Watching</span></div>
+          <div class="hstat"><span id="hands-count" class="hstat-num">0</span><span class="hstat-label">Hands Up</span></div>
+        </div>
+        <div class="session-controls">
+          <button id="start-btn" class="btn btn-primary btn-sm">▶ Start Training</button>
+          <button id="end-btn" class="btn btn-danger btn-sm hidden">⏹ End for Everyone</button>
+          <button id="mute-all-btn" class="btn btn-ghost-dark btn-sm" disabled>🔇 Mute All</button>
+        </div>
+      </div>
+      <div class="participants-area">
+        <h4>Participants</h4>
+        <div id="participants-list"></div>
+        <p id="no-participants" class="no-participants">No one has joined yet.<br>Start the session so students can enter.</p>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <script src="config.js"></script>
+  <script src="js/host-room.js"></script>
+</body>
+</html>
