@@ -25,6 +25,12 @@
   </header>
 
   <div class="jitsi-container" id="jitsi-container">
+    <!-- Covers Jitsi's "no moderator / log-in" screen while connecting -->
+    <div id="jitsi-overlay" class="jitsi-overlay hidden">
+      <div class="spinner" style="width:40px;height:40px;border-width:4px;margin-bottom:16px;"></div>
+      <p style="font-size:16px;font-weight:600;color:rgba(255,255,255,.9);">🔴 Connecting to session…</p>
+      <p style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;">Please wait for Coach Victor</p>
+    </div>
     <div id="room-placeholder" class="room-placeholder hidden">
       <div class="spinner" style="margin-bottom:20px;width:40px;height:40px;border-width:4px;"></div>
       <h3>Waiting for Coach Victor to start…</h3>

@@ -104,8 +104,11 @@
       (payload) => { if (payload.new.is_active && placeholder && !placeholder.classList.contains('hidden')) { placeholder.classList.add('hidden'); initJitsi(); } })
     .subscribe();
 
+  const jitsiOverlay = document.getElementById('jitsi-overlay');
+
   function initJitsi() {
     if (!window.JitsiMeetExternalAPI) { console.error('Jitsi API not loaded'); return; }
+    if (jitsiOverlay) jitsiOverlay.classList.remove('hidden');
     jitsiApi = new JitsiMeetExternalAPI(CFG.JITSI_DOMAIN, {
       roomName, parentNode: jitsiContainer, width: '100%', height: '100%',
       userInfo: { displayName: name },
@@ -118,6 +121,7 @@
         enableNoisyMicDetection: false, enableNoAudioDetection: false,
         gatherStats: false, remoteVideoMenu: { disabled: true },
         disableSelfViewSettings: true, p2p: { enabled: false },
+        enableLobby: false,
       },
       interfaceConfigOverwrite: {
         TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false,
@@ -129,6 +133,10 @@
         FILM_STRIP_MAX_HEIGHT: 80,
       },
     });
+    const hideOverlay = () => { if (jitsiOverlay) jitsiOverlay.classList.add('hidden'); };
+    jitsiApi.on('videoConferenceJoined', () => setTimeout(hideOverlay, 1500));
+    setTimeout(hideOverlay, 15000);
+
     jitsiApi.on('audioMuteStatusChanged', ({ muted }) => {
       isSpeaking = !muted;
       if (speakBtn) {
