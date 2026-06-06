@@ -7,7 +7,44 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
-  <style>html, body { height: 100%; overflow: hidden; }</style>
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    .host-call-card {
+      height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px; padding: 32px; text-align: center;
+    }
+    .call-card-icon { font-size: 56px; line-height: 1; }
+    .call-card-title {
+      font-size: 22px; font-weight: 700; color: rgba(255,255,255,.95);
+    }
+    .call-card-sub { font-size: 14px; color: rgba(255,255,255,.5); margin-top: -8px; }
+    .call-card-open-btn {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--brand); color: #fff;
+      border: none; border-radius: 14px; padding: 16px 32px;
+      font-size: 17px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(107,70,193,.5);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .call-card-open-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(107,70,193,.6); }
+    .call-card-open-btn:active { transform: translateY(0); }
+    .call-card-hint {
+      font-size: 12px; color: rgba(255,255,255,.35); max-width: 300px; line-height: 1.6;
+    }
+    .call-card-link {
+      font-size: 11px; color: rgba(255,255,255,.2); word-break: break-all; max-width: 340px;
+    }
+    .live-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.4);
+      border-radius: 999px; padding: 6px 16px;
+      font-size: 13px; font-weight: 600; color: #f87171;
+    }
+    .dot-red { width:8px;height:8px;border-radius:50%;background:#ef4444;
+      animation: pulse-dot 1.4s ease-in-out infinite; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+  </style>
 </head>
 <body class="page-host">
 
@@ -28,11 +65,30 @@
   <div class="host-layout">
 
     <div class="host-jitsi-area" id="jitsi-area">
+
+      <!-- Shown before session starts -->
       <div id="host-placeholder" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.5);gap:16px;padding:32px;text-align:center;">
         <span style="font-size:52px;">🎬</span>
         <h3 style="font-size:18px;font-weight:600;color:rgba(255,255,255,.8);">Ready when you are</h3>
         <p style="font-size:14px;">Click <strong style="color:var(--green);">Start Training</strong> in the panel to open the room for students.</p>
       </div>
+
+      <!-- Shown when session is live -->
+      <div id="host-call-card" class="host-call-card hidden">
+        <div class="live-badge"><span class="dot-red"></span> LIVE NOW</div>
+        <div class="call-card-icon">📺</div>
+        <div class="call-card-title">Session is Live!</div>
+        <div class="call-card-sub">Click below to join as host — camera stays off by default.</div>
+        <button id="host-open-call-btn" class="call-card-open-btn">
+          📺 &nbsp;Open Video Call
+        </button>
+        <div class="call-card-hint">
+          Opens Jitsi in a new tab. You'll join as <strong style="color:rgba(255,255,255,.6);">Coach Victor (Host)</strong><br>
+          with mic on and camera off. Share your screen from the Jitsi toolbar.
+        </div>
+        <div id="host-room-link" class="call-card-link"></div>
+      </div>
+
     </div>
 
     <aside class="host-panel">
@@ -45,11 +101,11 @@
         <div class="session-controls">
           <button id="start-btn" class="btn btn-primary btn-sm">▶ Start Training</button>
           <button id="end-btn" class="btn btn-danger btn-sm hidden">⏹ End for Everyone</button>
-          <button id="mute-all-btn" class="btn btn-ghost-dark btn-sm" disabled>🔇 Mute All</button>
-          <button id="share-screen-btn" class="btn btn-ghost-dark btn-sm" disabled>📺 Share Screen</button>
+          <button id="mute-all-btn" class="btn btn-ghost-dark btn-sm" disabled>🔇 Revoke All Speak</button>
+          <button id="open-call-btn" class="btn btn-ghost-dark btn-sm" disabled>📺 Open Video Call</button>
         </div>
         <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:8px;line-height:1.4;">
-          If Jitsi asks you to <strong style="color:rgba(255,255,255,.5);">Log-in</strong>, tap it and sign in with Google — do this once to become the meeting host.
+          Start the session, then click <strong style="color:rgba(255,255,255,.5);">Open Video Call</strong> to join Jitsi as host in a new tab. Students join from their own room page.
         </p>
       </div>
       <div class="participants-area">
@@ -62,7 +118,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="https://meet.ffmuc.net/external_api.js"></script>
   <script src="config.js"></script>
   <script src="js/host-room.js"></script>
 </body>
