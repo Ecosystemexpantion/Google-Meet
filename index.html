@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>EEM26 — Free Selar Setup Training | Coach Victor</title>
+  <meta name="description" content="Join Coach Victor's live Selar setup training. Learn how to sell digital products and receive payments from anywhere in Nigeria and beyond." />
+  <!-- Open Graph (for WhatsApp / Telegram sharing) -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:title"       content="Free Selar Setup Training — EEM26 Live" />
+  <meta property="og:description" content="Join Coach Victor live this Sunday 8 PM. Learn Selar in one session." />
+  <meta property="og:image"       content="https://placehold.co/1200x630/6B46C1/white?text=EEM26+Selar+Training" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
+</head>
+<body class="page-landing">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="lp-header">
+    <div class="brand">
+      <span class="brand-chip">EEM26</span>
+      <div>
+        <div class="brand-name">Selar Setup Training</div>
+        <div class="brand-sub">with Coach Victor</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main content ───────────────────────────────────────── -->
+  <main class="lp-main">
+
+    <!-- Status stripe (populated by JS) -->
+    <div id="status-stripe" class="status-stripe soon" style="display:none"></div>
+
+    <!-- Countdown (shown when upcoming) -->
+    <div id="countdown-wrap" class="countdown-wrap hidden">
+      <p class="countdown-eyebrow">Training starts in</p>
+      <div class="countdown-grid">
+        <div class="cd-unit"><span id="cd-days" class="cd-num">00</span><span class="cd-label">Days</span></div>
+        <span class="cd-sep">:</span>
+        <div class="cd-unit"><span id="cd-hours" class="cd-num">00</span><span class="cd-label">Hours</span></div>
+        <span class="cd-sep">:</span>
+        <div class="cd-unit"><span id="cd-mins" class="cd-num">00</span><span class="cd-label">Mins</span></div>
+        <span class="cd-sep">:</span>
+        <div class="cd-unit"><span id="cd-secs" class="cd-num">00</span><span class="cd-label">Secs</span></div>
+      </div>
+      <p style="margin-top:16px;font-size:14px;color:var(--text-muted);">
+        📅 Every Sunday · 8:00 PM · GMT+1 (West Africa Time)
+      </p>
+    </div>
+
+    <!-- Live badge (shown when within training window) -->
+    <div id="live-block" class="live-block hidden">
+      <div class="live-pill">
+        <span class="live-dot"></span>
+        LIVE NOW — Join Below
+      </div>
+    </div>
+
+    <!-- ── AIDA Copy ─────────────────────────────────────────── -->
+    <section class="hero">
+      <h1 class="hero-headline">
+        Stop Losing Sales Because Customers Can't Pay You
+      </h1>
+
+      <p class="hero-sub">
+        Every week, Nigerian digital entrepreneurs lose thousands of Naira because their
+        payment setup is broken, incomplete, or just not set up at all. Your idea is good.
+        Your content is valuable. But if people can't <em>pay you</em> — you're leaving
+        money on the table every single day.
+      </p>
+
+      <p class="hero-sub">
+        Coach Victor has helped hundreds of entrepreneurs fix this exact problem with
+        <strong>Selar</strong> — Nigeria's most powerful platform for selling digital products,
+        courses, ebooks, and services online. This Sunday, he'll show you the full setup,
+        live, step by step.
+      </p>
+
+      <ul class="hero-benefits">
+        <li>
+          <span class="ico">💳</span>
+          <span>Accept payments in Naira, USD, GBP and more — from customers in Nigeria,
+          the diaspora, and anywhere in the world</span>
+        </li>
+        <li>
+          <span class="ico">🚀</span>
+          <span>Set up your complete Selar storefront in one session — even if you've
+          never sold anything online before</span>
+        </li>
+        <li>
+          <span class="ico">🤖</span>
+          <span>Automate product delivery so customers get what they paid for
+          instantly — 24 hours a day, while you sleep</span>
+        </li>
+        <li>
+          <span class="ico">📈</span>
+          <span>Learn the exact product types that sell fastest right now for
+          Nigerian creators — courses, templates, coaching, memberships</span>
+        </li>
+        <li>
+          <span class="ico">🔐</span>
+          <span>Protect your content from theft, piracy, and unauthorized sharing
+          using Selar's built-in security</span>
+        </li>
+        <li>
+          <span class="ico">✅</span>
+          <span>Get your first product <em>live and ready to sell</em> before the
+          session ends tonight</span>
+        </li>
+      </ul>
+
+      <p class="hero-cta-note">
+        ⚡ This is a live, interactive session — not a video you'll watch and forget.
+        Seats are limited. Once Coach Victor opens the room, we start immediately.
+      </p>
+    </section>
+
+    <!-- ── Join form (shown when session is active) ──────────── -->
+    <section id="join-section" class="hidden">
+      <div class="join-card">
+        <h2 class="join-card-heading">Enter Your Name to Join</h2>
+        <input
+          type="text"
+          id="student-name"
+          class="input-field"
+          placeholder="Your first name"
+          maxlength="60"
+          autocomplete="given-name"
+        />
+        <button id="join-btn" class="btn btn-primary" disabled>
+          Join Training Now →
+        </button>
+        <p class="join-note">Free. No download. Works on your phone.</p>
+      </div>
+    </section>
+
+    <!-- ── Waiting card (live window, session not started yet) ── -->
+    <section id="waiting-card" class="waiting-card hidden">
+      <div class="spinner"></div>
+      <h3>Coach Victor hasn't opened the room yet</h3>
+      <p>Stay on this page — the session will start any moment.<br>This page updates automatically.</p>
+    </section>
+
+    <!-- ── House rules ─────────────────────────────────────────── -->
+    <section class="rules-card">
+      <h4>📋 House Rules for Participants</h4>
+      <ul class="rules-list">
+        <li>✅ Your microphone is automatically muted when you join</li>
+        <li>✅ Your camera stays off — you only watch and listen</li>
+        <li>✅ You can raise your hand to ask a question</li>
+        <li>✅ Coach Victor may unmute you to share your experience</li>
+        <li>❌ Chat and screen sharing are disabled for participants</li>
+        <li>⏰ Stay until the end — there's a special announcement at the close</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <!-- ── Scripts ─────────────────────────────────────────────── -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script>
+    // Make status stripe visible now that JS runs
+    document.getElementById('status-stripe').style.display = '';
+  </script>
+  <script src="js/landing.js"></script>
+</body>
+</html>
