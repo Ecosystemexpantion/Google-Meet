@@ -139,7 +139,6 @@ input, button { appearance: none; -webkit-appearance: none; }
    ===================================================== */
 .page-landing { background: var(--white); min-height: 100vh; }
 
-/* Header */
 .lp-header {
   position: sticky; top: 0; z-index: 100; background: var(--white);
   border-bottom: 1px solid var(--gray-200);
@@ -156,10 +155,8 @@ input, button { appearance: none; -webkit-appearance: none; }
 .brand-name { font-size: 15px; font-weight: 600; color: var(--text); }
 .brand-sub  { font-size: 12px; color: var(--text-muted); }
 
-/* Layout */
 .lp-main { max-width: 640px; margin: 0 auto; padding: 32px 20px 80px; }
 
-/* Status stripe */
 .status-stripe {
   border-radius: var(--radius); padding: 10px 16px;
   text-align: center; font-size: 14px; font-weight: 600;
@@ -169,13 +166,12 @@ input, button { appearance: none; -webkit-appearance: none; }
 .status-stripe.soon    { background: var(--brand-surface); color: var(--brand); border: 1px solid #d6bcfa; }
 .status-stripe.waiting { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
 
-/* Countdown */
 .countdown-wrap { text-align: center; margin-bottom: 32px; }
 .countdown-eyebrow {
   font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
   color: var(--text-muted); margin-bottom: 16px; font-weight: 600;
 }
-.countdown-grid { display: flex; justify-content: center; gap: 12px; }
+.countdown-grid { display: flex; justify-content: center; gap: 12px; align-items: center; }
 .cd-unit { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .cd-num {
   font-size: 52px; font-weight: 800; line-height: 1;
@@ -183,14 +179,13 @@ input, button { appearance: none; -webkit-appearance: none; }
   font-variant-numeric: tabular-nums; letter-spacing: -2px;
 }
 .cd-label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
-.cd-sep { font-size: 40px; font-weight: 300; color: var(--gray-200); margin-top: 4px; }
+.cd-sep { font-size: 40px; font-weight: 300; color: var(--gray-200); }
 
 @media (max-width: 400px) {
   .cd-num { font-size: 36px; min-width: 48px; }
   .countdown-grid { gap: 8px; }
 }
 
-/* Live badge */
 .live-block { text-align: center; margin-bottom: 24px; }
 .live-pill {
   display: inline-flex; align-items: center; gap: 10px;
@@ -208,13 +203,12 @@ input, button { appearance: none; -webkit-appearance: none; }
   50%      { transform: scale(1.4); opacity: .6; }
 }
 
-/* Hero copy */
 .hero { margin-bottom: 32px; }
 .hero-headline {
   font-size: clamp(24px, 5vw, 34px); font-weight: 900;
   color: var(--gray-900); line-height: 1.2; margin-bottom: 14px;
 }
-.hero-sub { font-size: 16px; line-height: 1.75; color: var(--text-muted); margin-bottom: 24px; }
+.hero-sub { font-size: 16px; line-height: 1.75; color: var(--text-muted); margin-bottom: 20px; }
 .hero-benefits { list-style: none; margin-bottom: 24px; }
 .hero-benefits li {
   display: flex; align-items: flex-start; gap: 12px;
@@ -230,7 +224,6 @@ input, button { appearance: none; -webkit-appearance: none; }
   margin-bottom: 24px;
 }
 
-/* Join card */
 .join-card {
   background: var(--white); border: 1px solid var(--gray-200);
   border-radius: var(--radius-xl); padding: 28px 24px;
@@ -240,7 +233,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .join-card .input-field { margin-bottom: 14px; }
 .join-note { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 10px; }
 
-/* Waiting card */
 .waiting-card {
   text-align: center; padding: 28px 20px;
   border: 2px dashed var(--gray-200); border-radius: var(--radius-lg);
@@ -250,7 +242,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .waiting-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
 .waiting-card p  { font-size: 14px; color: var(--text-muted); }
 
-/* Rules card */
 .rules-card {
   background: var(--gray-50); border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg); padding: 20px 22px;
@@ -269,7 +260,6 @@ input, button { appearance: none; -webkit-appearance: none; }
   overflow: hidden;
 }
 
-/* Room header bar */
 .room-header {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--dark); border-bottom: 1px solid var(--dark-border);
@@ -277,7 +267,7 @@ input, button { appearance: none; -webkit-appearance: none; }
 }
 .room-brand { display: flex; align-items: center; gap: 8px; }
 .room-brand .brand-chip { font-size: 12px; padding: 4px 8px; }
-.room-brand .brand-name { font-size: 13px; color: rgba(255,255,255,.8); }
+.room-brand .brand-name { font-size: 13px; }
 
 .attendance-pill {
   display: flex; align-items: center; gap: 6px;
@@ -289,13 +279,11 @@ input, button { appearance: none; -webkit-appearance: none; }
 .ticker-wrap { overflow: hidden; max-width: 180px; }
 .ticker-text  { font-size: 11px; color: rgba(255,255,255,.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Jitsi area */
 .jitsi-container {
   flex: 1; min-height: 0; position: relative; overflow: hidden;
 }
 .jitsi-container iframe { border: none !important; }
 
-/* No-session placeholder */
 .room-placeholder {
   position: absolute; inset: 0; background: var(--dark-2);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -304,7 +292,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .room-placeholder h3 { font-size: 20px; font-weight: 600; }
 .room-placeholder p  { font-size: 14px; opacity: .7; }
 
-/* Room controls */
 .room-controls {
   background: var(--dark); border-top: 1px solid var(--dark-border);
   padding: 12px 20px; display: flex; align-items: center;
@@ -320,7 +307,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .ctrl-btn:hover { background: #45484c; }
 .ctrl-btn.raised { background: var(--amber); }
 .ctrl-btn.speaking { background: var(--brand); }
-.ctrl-btn-label { font-size: 10px; color: rgba(255,255,255,.6); white-space: nowrap; }
 
 .speak-action {
   background: var(--brand); color: var(--white);
@@ -332,7 +318,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .speak-action.is-speaking { background: var(--red); animation: none; }
 .speak-action:hover { filter: brightness(1.1); }
 
-/* Permission toast */
 .perm-toast {
   position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
   background: var(--brand); color: var(--white);
@@ -347,7 +332,6 @@ input, button { appearance: none; -webkit-appearance: none; }
   to   { transform: translateX(-50%) translateY(0); opacity: 1; }
 }
 
-/* Closing overlay */
 .closing-overlay {
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(0,0,0,.88); backdrop-filter: blur(12px);
@@ -407,7 +391,6 @@ input, button { appearance: none; -webkit-appearance: none; }
   overflow: hidden;
 }
 
-/* Host top bar */
 .host-bar {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--dark); border-bottom: 1px solid var(--dark-border);
@@ -427,7 +410,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 .badge-dot.active { background: var(--green); }
 .badge-dot.inactive { background: var(--gray-400); }
 
-/* Layout */
 .host-layout { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 
 .host-jitsi-area { flex: 1; min-width: 0; position: relative; overflow: hidden; }
@@ -439,23 +421,19 @@ input, button { appearance: none; -webkit-appearance: none; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 
-/* Panel header */
 .panel-head {
   padding: 16px; border-bottom: 1px solid var(--dark-border); flex-shrink: 0;
 }
 .panel-head h3 { font-size: 13px; font-weight: 700; color: var(--white); margin-bottom: 12px; }
 
-/* Stats row */
 .host-stats { display: flex; gap: 8px; margin-bottom: 12px; }
 .hstat { flex: 1; background: var(--dark-3); border-radius: var(--radius-sm); padding: 10px 8px; text-align: center; }
 .hstat-num   { font-size: 22px; font-weight: 800; color: var(--white); display: block; }
 .hstat-label { font-size: 10px; color: var(--gray-500); }
 
-/* Session controls */
 .session-controls { display: flex; flex-direction: column; gap: 8px; }
 .session-controls .btn { border-radius: var(--radius); height: 40px; font-size: 13px; }
 
-/* Participant list */
 .participants-area { flex: 1; overflow-y: auto; padding: 8px; }
 .participants-area h4 {
   font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
@@ -493,7 +471,6 @@ input, button { appearance: none; -webkit-appearance: none; }
 
 .no-participants { font-size: 12px; color: var(--gray-500); text-align: center; padding: 20px 10px; }
 
-/* Scrollbar for dark panels */
 .participants-area::-webkit-scrollbar { width: 4px; }
 .participants-area::-webkit-scrollbar-track { background: transparent; }
 .participants-area::-webkit-scrollbar-thumb { background: var(--dark-border); border-radius: 2px; }
@@ -502,7 +479,6 @@ input, button { appearance: none; -webkit-appearance: none; }
    RESPONSIVE
    ===================================================== */
 @media (max-width: 768px) {
-  /* Host panel becomes bottom drawer on mobile */
   .host-layout { flex-direction: column; }
   .host-panel {
     width: 100%; height: 260px;
@@ -521,14 +497,3 @@ input, button { appearance: none; -webkit-appearance: none; }
   .host-panel { height: 220px; }
   .panel-head { width: 150px; }
 }
-
-/* Session not started notice for room page */
-.session-notice {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  color: rgba(255,255,255,.8); text-align: center; padding: 32px;
-  background: var(--dark);
-}
-.session-notice .spinner { border-color: var(--dark-border); border-top-color: var(--brand); margin-bottom: 20px; }
-.session-notice h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-.session-notice p  { font-size: 14px; color: var(--gray-500); }
