@@ -24,13 +24,9 @@
   const sb = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
   const placeholder      = document.getElementById('room-placeholder');
-  const streamContainer  = document.getElementById('stream-container');
-  const streamIframe     = document.getElementById('stream-iframe');
   const liveLobby        = document.getElementById('live-lobby');
   const joinCallBtn      = document.getElementById('join-call-btn');
-  const lobbyTitle       = document.getElementById('lobby-title');
   const lobbyNameDisplay = document.getElementById('lobby-name-display');
-  const joinHint         = document.getElementById('join-hint');
   const attendanceEl     = document.getElementById('attendance-count');
   const tickerEl         = document.getElementById('ticker-text');
   const tickerCard       = document.getElementById('ticker-card');
@@ -40,18 +36,13 @@
   const closingOverlay   = document.getElementById('closing-overlay');
   const closingReturnBtn = document.getElementById('closing-return-btn');
   const appHint          = document.getElementById('app-hint');
-  const appStoreLink     = document.getElementById('app-store-link');
 
-  // Show app install hint on Android phones
+  // Show mobile hint on phones
   const isAndroid = /Android/i.test(navigator.userAgent);
   const isIOS     = /iPhone|iPad/i.test(navigator.userAgent);
   if (appHint && (isAndroid || isIOS)) {
     appHint.classList.remove('hidden');
-    if (appStoreLink && isIOS) {
-      appStoreLink.href = 'https://apps.apple.com/app/jitsi-meet/id1165103905';
-    }
-    // Dismiss hint after 12 seconds
-    setTimeout(() => appHint.classList.add('hidden'), 12000);
+    setTimeout(() => appHint.classList.add('hidden'), 14000);
   }
 
   let handRaised    = false;
@@ -59,14 +50,37 @@
   let recentJoiners = [];
   let callWindow    = null;
 
-  // Convert any stream URL to an embeddable URL
+  // Parse stream_url — may be JSON {meetA, meetB} or a plain URL
+  function parseMeetUrls(streamUrl) {
+    if (!streamUrl) return null;
+    try {
+      const parsed = JSON.parse(streamUrl);
+      if (parsed && parsed.meetA) return parsed;
+    } catch (_) {}
+    return { meetA: streamUrl, meetB: null };
+  }
+
+  // Deterministically split student between Meeting A and B based on participant ID
+  function getAssignedMeetUrl(urls) {
+    if (!urls || !urls.meetA) return null;
+    if (!urls.meetB) return urls.meetA;
+    const hash = pid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return hash % 2 === 0 ? urls.meetA : urls.meetB;
+  }
+
+  // Video call platforms — open in new tab
+  function isCallPlatformUrl(url) {
+    if (!url) return false;
+    return /meet\.google\.com|zoom\.us|us0[0-9]\.zoom\.us|teams\.microsoft\.com|webex\.com|whereby\.com/i.test(url);
+  }
+
+  // Streaming platforms — embeddable in iframe
   function toEmbedUrl(url) {
     if (!url) return null;
-    // YouTube: watch, short, live URLs
+    if (isCallPlatformUrl(url)) return null;
     const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]+)/);
     if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0&modestbranding=1`;
     if (url.includes('youtube.com/embed/')) return url;
-    // Twitch: channel URL → embed player
     const tw = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)/);
     if (tw) {
       const parent = window.location.hostname || 'localhost';
@@ -87,55 +101,86 @@
   }
 
   function showStream(streamUrl) {
+    const meetUrls = parseMeetUrls(streamUrl);
+    if (meetUrls && meetUrls.meetA && isCallPlatformUrl(meetUrls.meetA)) {
+      // Google Meet (or similar) — show lobby with assigned link
+      const assignedUrl = getAssignedMeetUrl(meetUrls);
+      showLiveLobby();
+      if (joinCallBtn) {
+        joinCallBtn.innerHTML = '📹 &nbsp;Join Live Video Call';
+        joinCallBtn.onclick = () => {
+          callWindow = window.open(assignedUrl, '_call');
+          showInCallState(assignedUrl);
+        };
+      }
+      return;
+    }
+    // Try embedding (YouTube / Twitch)
+    if (isCallPlatformUrl(streamUrl)) {
+      showLiveLobby();
+      if (joinCallBtn) {
+        joinCallBtn.innerHTML = '📹 &nbsp;Join Live Video Call';
+        joinCallBtn.onclick = () => {
+          callWindow = window.open(streamUrl, '_call');
+          showInCallState(streamUrl);
+        };
+      }
+      return;
+    }
     const embedUrl = toEmbedUrl(streamUrl);
-    if (!embedUrl) { showLiveLobby(); return; }
-    placeholder.classList.add('hidden');
-    liveLobby.classList.add('hidden');
-    streamIframe.src = embedUrl;
-    streamContainer.classList.remove('hidden');
+    if (embedUrl) {
+      placeholder.classList.add('hidden');
+      liveLobby.classList.add('hidden');
+      const sc = document.getElementById('stream-container');
+      const si = document.getElementById('stream-iframe');
+      if (sc && si) { si.src = embedUrl; sc.classList.remove('hidden'); }
+      return;
+    }
+    showLiveLobby();
   }
 
   function showLiveLobby() {
     placeholder.classList.add('hidden');
-    streamContainer.classList.add('hidden');
+    const sc = document.getElementById('stream-container');
+    if (sc) sc.classList.add('hidden');
     liveLobby.classList.remove('hidden');
     if (lobbyNameDisplay) lobbyNameDisplay.textContent = `Logged in as ${name}`;
+    // Default: fallback to Jitsi
+    if (joinCallBtn) {
+      joinCallBtn.innerHTML = '📺 &nbsp;Join Live Video Call';
+      joinCallBtn.onclick = () => {
+        callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
+        showInCallState(null);
+      };
+    }
   }
 
   function showWaiting() {
-    streamContainer.classList.add('hidden');
+    const sc = document.getElementById('stream-container');
+    if (sc) sc.classList.add('hidden');
     liveLobby.classList.add('hidden');
     placeholder.classList.remove('hidden');
   }
 
-  // After student clicks "Join" — switch the lobby to an "in-call" state
-  function showInCallState() {
-    if (lobbyTitle) lobbyTitle.textContent = 'You\'re in the video call';
-    if (lobbyNameDisplay) lobbyNameDisplay.textContent = 'Raise your hand below ✋ — come back here anytime';
-    if (joinHint) joinHint.textContent = 'Tap above to re-open the video tab.';
+  // After student joins — switch lobby to "in-call" state
+  function showInCallState(assignedUrl) {
     if (joinCallBtn) {
       joinCallBtn.innerHTML = '📺 &nbsp;Re-open Video Tab';
       joinCallBtn.onclick = () => {
-        if (callWindow && !callWindow.closed) {
-          callWindow.focus();
-        } else {
-          callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
-        }
+        const url = assignedUrl || buildJitsiUrl();
+        if (callWindow && !callWindow.closed) callWindow.focus();
+        else callWindow = window.open(url, '_call');
       };
     }
   }
 
   // Initial session check
   const { data: session } = await sb.from('sessions')
-    .select('is_active, stream_url')
-    .eq('id', sessionId).maybeSingle();
+    .select('is_active, stream_url').eq('id', sessionId).maybeSingle();
 
   if (session && session.is_active) {
-    if (session.stream_url) {
-      showStream(session.stream_url);
-    } else {
-      showLiveLobby();
-    }
+    if (session.stream_url) showStream(session.stream_url);
+    else showLiveLobby();
   } else {
     showWaiting();
   }
@@ -190,7 +235,7 @@
       })
     .subscribe();
 
-  // Session state changes (stream URL update, session end)
+  // Session state changes
   sb.channel(`session:${sessionId}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${sessionId}` },
       (payload) => {
@@ -198,7 +243,7 @@
           showClosingMessage();
         } else if (payload.new.stream_url) {
           showStream(payload.new.stream_url);
-        } else if (!payload.new.stream_url && streamContainer && !streamContainer.classList.contains('hidden')) {
+        } else {
           showLiveLobby();
         }
       })
@@ -208,23 +253,12 @@
   sb.channel('session-start-watch')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions' },
       (payload) => {
-        if (payload.new.is_active && !placeholder.classList.contains('hidden')) {
-          if (payload.new.stream_url) {
-            showStream(payload.new.stream_url);
-          } else {
-            showLiveLobby();
-          }
+        if (payload.new.is_active && liveLobby.classList.contains('hidden') && placeholder && !placeholder.classList.contains('hidden')) {
+          if (payload.new.stream_url) showStream(payload.new.stream_url);
+          else showLiveLobby();
         }
       })
     .subscribe();
-
-  // Join Jitsi fallback button
-  if (joinCallBtn) {
-    joinCallBtn.addEventListener('click', () => {
-      callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
-      showInCallState();
-    });
-  }
 
   // Hand raise
   handBtn.addEventListener('click', async () => {
@@ -234,18 +268,17 @@
     await sb.from('participants').update({ has_raised_hand: handRaised }).eq('id', pid);
   });
 
-  // Speak button — opens Jitsi for Q&A
+  // Speak button — opens assigned call for Q&A
   if (speakBtn) {
     speakBtn.addEventListener('click', () => {
-      callWindow = window.open(buildJitsiUrl(), '_jitsi_call');
+      if (callWindow && !callWindow.closed) callWindow.focus();
+      else callWindow = window.open(buildJitsiUrl(), '_call');
     });
   }
 
   function showPermissionUI() {
-    // Vibrate the phone so student knows even if they're watching Jitsi
     if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 500]);
 
-    // Flash tab title so it's visible even when another tab is in focus
     const originalTitle = document.title;
     document.title = '🔴 Coach says you can speak! — EEM26';
     document.addEventListener('visibilitychange', function restoreTitle() {
@@ -255,10 +288,13 @@
       }
     });
 
-    permToast.textContent = '🎉 Coach Victor says you can speak! Switch back here then tap below.';
+    permToast.textContent = '🎉 Coach Victor says you can speak — go to the video call and unmute yourself!';
     permToast.classList.remove('hidden');
-    if (speakBtn) speakBtn.classList.remove('hidden');
-    setTimeout(() => permToast.classList.add('hidden'), 15000);
+    if (speakBtn) {
+      speakBtn.textContent = '🎤 Go to Call & Unmute';
+      speakBtn.classList.remove('hidden');
+    }
+    setTimeout(() => permToast.classList.add('hidden'), 12000);
   }
 
   function hidePermissionUI() {
