@@ -24,7 +24,8 @@
   const participantsList  = document.getElementById('participants-list');
   const noParticipants    = document.getElementById('no-participants');
   const streamUrlSection  = document.getElementById('stream-url-section');
-  const streamUrlInput    = document.getElementById('stream-url-input');
+  const meetUrlA          = document.getElementById('meet-url-a');
+  const meetUrlB          = document.getElementById('meet-url-b');
   const setStreamBtn      = document.getElementById('set-stream-btn');
   const streamUrlStatus   = document.getElementById('stream-url-status');
 
@@ -43,7 +44,7 @@
     return `${CFG.ROOM_PREFIX}${now.getFullYear()}W${String(getWeek(now)).padStart(2, '0')}`;
   }
 
-  function buildHostMeetingUrl(roomName) {
+  function buildHostJitsiUrl(roomName) {
     const fragment = [
       `config.startWithAudioMuted=false`,
       `config.startWithVideoMuted=true`,
@@ -56,7 +57,7 @@
 
   function openVideoCall() {
     if (!currentSession) return;
-    window.open(buildHostMeetingUrl(currentSession.room_name), '_blank');
+    window.open(buildHostJitsiUrl(currentSession.room_name), '_blank');
   }
 
   async function fetchSession() {
@@ -64,24 +65,60 @@
     return data;
   }
 
+  function parseMeetUrls(streamUrl) {
+    if (!streamUrl) return { meetA: null, meetB: null };
+    try {
+      const parsed = JSON.parse(streamUrl);
+      if (parsed && parsed.meetA) return parsed;
+    } catch (_) {}
+    return { meetA: streamUrl, meetB: null };
+  }
+
+  function buildStreamVal() {
+    const urlA = meetUrlA ? meetUrlA.value.trim() : '';
+    const urlB = meetUrlB ? meetUrlB.value.trim() : '';
+    if (urlA && urlB) return JSON.stringify({ meetA: urlA, meetB: urlB });
+    if (urlA) return JSON.stringify({ meetA: urlA, meetB: null });
+    return null;
+  }
+
+  function updateStreamStatusDisplay(streamUrl) {
+    if (!hostStreamStatus) return;
+    const { meetA, meetB } = parseMeetUrls(streamUrl);
+    if (meetA) {
+      hostStreamStatus.textContent = meetB
+        ? '✅ Two Google Meet links active — students split 50/50.'
+        : '✅ One Google Meet link active — all students join together.';
+      hostStreamStatus.style.color = '#4ade80';
+      if (streamUrlStatus) {
+        streamUrlStatus.innerHTML = '<span class="stream-active-badge">🟢 Meet links saved — students routed automatically</span>';
+      }
+    } else {
+      hostStreamStatus.textContent = 'No meeting links — students see a Jitsi fallback button.';
+      hostStreamStatus.style.color = '';
+      if (streamUrlStatus) streamUrlStatus.innerHTML = '';
+    }
+  }
+
   async function startSession() {
     startBtn.disabled = true; startBtn.textContent = 'Starting…';
     const roomName = buildRoomName();
+    const streamVal = buildStreamVal();
     let session = await fetchSession();
     if (!session) {
       const { data } = await sb.from('sessions').insert({
         room_name: roomName, is_active: true, started_at: new Date().toISOString(),
-        stream_url: streamUrlInput.value.trim() || null,
+        stream_url: streamVal,
       }).select().single();
       session = data;
     } else {
       await sb.from('sessions').update({
         room_name: roomName, is_active: true,
         started_at: new Date().toISOString(), ended_at: null,
-        stream_url: streamUrlInput.value.trim() || null,
+        stream_url: streamVal,
       }).eq('id', session.id);
       session.room_name = roomName; session.is_active = true;
-      session.stream_url = streamUrlInput.value.trim() || null;
+      session.stream_url = streamVal;
     }
     currentSession = session;
     updateSessionUI(true);
@@ -98,21 +135,6 @@
     await sb.from('sessions').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', currentSession.id);
     currentSession.is_active = false;
     updateSessionUI(false);
-  }
-
-  function updateStreamStatusDisplay(streamUrl) {
-    if (!hostStreamStatus) return;
-    if (streamUrl) {
-      hostStreamStatus.textContent = '✅ Students are watching your YouTube Live stream.';
-      hostStreamStatus.style.color = '#4ade80';
-      if (streamUrlStatus) {
-        streamUrlStatus.innerHTML = '<span class="stream-active-badge">🟢 Stream active — students see embedded video</span>';
-      }
-    } else {
-      hostStreamStatus.textContent = 'No stream URL set — students see a "Join Call" button.';
-      hostStreamStatus.style.color = '';
-      if (streamUrlStatus) streamUrlStatus.innerHTML = '';
-    }
   }
 
   function updateSessionUI(active) {
@@ -132,27 +154,31 @@
       if (hostPlaceholder) hostPlaceholder.style.display = 'none';
       if (hostCallCard) hostCallCard.classList.remove('hidden');
       if (hostOpenCallBtn) hostOpenCallBtn.onclick = openVideoCall;
-      streamUrlSection.classList.remove('hidden');
-      if (currentSession.stream_url) streamUrlInput.value = currentSession.stream_url;
+      if (streamUrlSection) streamUrlSection.classList.remove('hidden');
+      if (currentSession.stream_url) {
+        const { meetA, meetB } = parseMeetUrls(currentSession.stream_url);
+        if (meetUrlA) meetUrlA.value = meetA || '';
+        if (meetUrlB) meetUrlB.value = meetB || '';
+      }
       updateStreamStatusDisplay(currentSession.stream_url);
     } else {
       if (hostPlaceholder) hostPlaceholder.style.display = '';
       if (hostCallCard) hostCallCard.classList.add('hidden');
-      streamUrlSection.classList.add('hidden');
+      if (streamUrlSection) streamUrlSection.classList.add('hidden');
     }
   }
 
-  // Save / update stream URL while session is live
+  // Save / update Google Meet links while session is live
   if (setStreamBtn) {
     setStreamBtn.addEventListener('click', async () => {
       if (!currentSession) return;
       setStreamBtn.disabled = true; setStreamBtn.textContent = 'Saving…';
-      const url = streamUrlInput.value.trim() || null;
-      await sb.from('sessions').update({ stream_url: url }).eq('id', currentSession.id);
-      currentSession.stream_url = url;
-      updateStreamStatusDisplay(url);
+      const streamVal = buildStreamVal();
+      await sb.from('sessions').update({ stream_url: streamVal }).eq('id', currentSession.id);
+      currentSession.stream_url = streamVal;
+      updateStreamStatusDisplay(streamVal);
       setStreamBtn.disabled = false; setStreamBtn.textContent = '✓ Saved';
-      setTimeout(() => { setStreamBtn.textContent = 'Set'; }, 2500);
+      setTimeout(() => { setStreamBtn.textContent = 'Save Links'; }, 2500);
     });
   }
 

@@ -40,28 +40,31 @@
       animation: pulse-dot 1.4s ease-in-out infinite; }
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    /* Stream URL input */
+    /* Google Meet URL inputs */
     .stream-url-box {
       background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
       border-radius: 12px; padding: 12px; margin-top: 10px;
     }
-    .stream-url-box label {
+    .stream-url-box > label {
       display: block; font-size: 11px; font-weight: 600;
       color: rgba(255,255,255,.5); letter-spacing: .04em;
-      text-transform: uppercase; margin-bottom: 8px;
+      text-transform: uppercase; margin-bottom: 10px;
     }
-    .stream-url-row { display: flex; gap: 6px; }
+    .meet-input-label {
+      font-size: 10px; color: rgba(255,255,255,.4);
+      text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px;
+    }
     .stream-url-input {
-      flex: 1; background: rgba(255,255,255,.08);
+      width: 100%; box-sizing: border-box;
+      background: rgba(255,255,255,.08);
       border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
       padding: 8px 10px; font-size: 12px; color: #fff; outline: none;
-      min-width: 0;
     }
     .stream-url-input::placeholder { color: rgba(255,255,255,.3); }
     .stream-url-input:focus { border-color: var(--brand); }
     .stream-url-hint {
       font-size: 10px; color: rgba(255,255,255,.3);
-      margin-top: 6px; line-height: 1.5;
+      margin-top: 8px; line-height: 1.5;
     }
     .stream-active-badge {
       display: inline-flex; align-items: center; gap: 5px;
@@ -92,24 +95,24 @@
 
     <div class="host-jitsi-area" id="jitsi-area">
 
-      <!-- Before session starts -->
+      <!-- Shown before session starts -->
       <div id="host-placeholder" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.5);gap:16px;padding:32px;text-align:center;">
         <span style="font-size:52px;">🎬</span>
         <h3 style="font-size:18px;font-weight:600;color:rgba(255,255,255,.8);">Ready when you are</h3>
         <p style="font-size:14px;">Click <strong style="color:var(--green);">Start Training</strong> in the panel to open the room for students.</p>
       </div>
 
-      <!-- When session is live -->
+      <!-- Shown when session is live -->
       <div id="host-call-card" class="host-call-card hidden">
         <div class="live-badge"><span class="dot-red"></span> LIVE NOW</div>
         <div class="call-card-icon">📺</div>
         <div class="call-card-title">Session is Live!</div>
-        <div class="call-card-sub" id="host-stream-status">No stream URL set — students see a Join button.</div>
+        <div class="call-card-sub" id="host-stream-status">Add your Google Meet links in the panel →</div>
         <button id="host-open-call-btn" class="call-card-open-btn">
-          📺 &nbsp;Open Video Call (Jitsi)
+          📺 &nbsp;Open Jitsi (Fallback)
         </button>
         <div class="call-card-hint">
-          Opens Jitsi in a new tab. Join as <strong style="color:rgba(255,255,255,.6);">Coach Victor</strong> with mic on, camera off. Share your screen from the Jitsi toolbar.
+          If you use Google Meet, paste your links in the panel. This Jitsi button is a fallback if Meet isn't set up yet.
         </div>
       </div>
 
@@ -126,20 +129,31 @@
           <button id="start-btn" class="btn btn-primary btn-sm">▶ Start Training</button>
           <button id="end-btn" class="btn btn-danger btn-sm hidden">⏹ End for Everyone</button>
           <button id="mute-all-btn" class="btn btn-ghost-dark btn-sm" disabled>🔇 Revoke All Speak</button>
-          <button id="open-call-btn" class="btn btn-ghost-dark btn-sm" disabled>📺 Open Video Call</button>
+          <button id="open-call-btn" class="btn btn-ghost-dark btn-sm" disabled>📺 Open Jitsi Call</button>
         </div>
 
-        <!-- YouTube Live stream URL input -->
+        <!-- Google Meet dual-room inputs -->
         <div id="stream-url-section" class="stream-url-box hidden">
-          <label>📡 Stream URL (Twitch or YouTube)</label>
-          <div class="stream-url-row">
-            <input id="stream-url-input" class="stream-url-input" type="url"
-              placeholder="https://twitch.tv/yourchannel" autocomplete="off" />
-            <button id="set-stream-btn" class="btn btn-ghost-dark btn-sm">Set</button>
+          <label>📞 Google Meet Links (up to 200 students)</label>
+
+          <div style="margin-bottom:8px;">
+            <div class="meet-input-label">Meeting A — Account 1 (first ~100 students)</div>
+            <input id="meet-url-a" class="stream-url-input" type="url"
+              placeholder="https://meet.google.com/xxx-xxxx-xxx" autocomplete="off" />
+          </div>
+
+          <div style="margin-bottom:8px;">
+            <div class="meet-input-label">Meeting B — Account 2 (next ~100 students)</div>
+            <input id="meet-url-b" class="stream-url-input" type="url"
+              placeholder="https://meet.google.com/yyy-yyyy-yyy" autocomplete="off" />
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+            <button id="set-stream-btn" class="btn btn-ghost-dark btn-sm">Save Links</button>
           </div>
           <div id="stream-url-status"></div>
           <p class="stream-url-hint">
-            Paste a <strong style="color:rgba(255,255,255,.5);">Twitch</strong> channel URL (e.g. twitch.tv/yourname) or YouTube Live URL. Students see the video <strong style="color:rgba(255,255,255,.5);">embedded</strong> on their page — no tab switching needed. Leave blank to use Jitsi (new tab).
+            Start <strong style="color:rgba(255,255,255,.5);">two Google Meet calls</strong> — one on each Google account — then paste both links. Students are automatically split <strong style="color:rgba(255,255,255,.5);">50 / 50</strong>. Leave Meeting B blank to send everyone to one link.
           </p>
         </div>
 
