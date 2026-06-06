@@ -9,8 +9,8 @@ window.EEM26_CONFIG = {
   SUPABASE_URL:      'https://leqizarzgfpiriknpnxw.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcWl6YXJ6Z2ZwaXJpa25wbnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNzgxNTcsImV4cCI6MjA5NTc1NDE1N30.LNSMP3LXJv_QKE9COMmm9OS5axVGqw_60m750c6bBeg',
 
-  // Video provider (do not change unless self-hosting Jitsi)
-  JITSI_DOMAIN: 'meet.jit.si',
+  // Video provider — switched from meet.jit.si (5-min embed limit) to meet.ffmuc.net
+  JITSI_DOMAIN: 'meet.ffmuc.net',
 
   // Host password — SHA-256 hash of 'EEM26@2026'
   // To change: run  echo -n 'newpassword' | sha256sum  and paste result here

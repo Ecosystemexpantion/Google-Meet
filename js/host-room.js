@@ -94,15 +94,15 @@
       configOverwrite: {
         startWithAudioMuted: false, startWithVideoMuted: true,
         prejoinPageEnabled: false, disableDeepLinking: true,
-        disableInviteFunctions: true, enableLobby: false,
+        disableInviteFunctions: false, enableLobby: false,
         p2p: { enabled: false },
       },
       interfaceConfigOverwrite: {
         SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false, SHOW_BRAND_WATERMARK: false,
         BRAND_WATERMARK_LINK: '', SHOW_POWERED_BY: false, SHOW_PROMOTIONAL_CLOSE_PAGE: false,
         MOBILE_APP_PROMO: false, ENABLE_FEEDBACK_ANIMATION: false,
-        DISABLE_JOIN_LEAVE_NOTIFICATIONS: true, DEFAULT_BACKGROUND: '#202124',
-        TOOLBAR_BUTTONS: ['microphone','desktop','tileview','fullscreen','hangup'],
+        DISABLE_JOIN_LEAVE_NOTIFICATIONS: false, DEFAULT_BACKGROUND: '#202124',
+        TOOLBAR_BUTTONS: ['microphone','camera','desktop','participants-pane','chat','tileview','settings','fullscreen','hangup'],
       },
     });
     if (shareBtn) {
