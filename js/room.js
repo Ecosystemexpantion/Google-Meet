@@ -23,28 +23,50 @@
   const { createClient } = window.supabase;
   const sb = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
-  const jitsiContainer   = document.getElementById('jitsi-container');
   const placeholder      = document.getElementById('room-placeholder');
+  const liveLobby        = document.getElementById('live-lobby');
+  const joinCallBtn      = document.getElementById('join-call-btn');
+  const lobbyNameDisplay = document.getElementById('lobby-name-display');
   const attendanceEl     = document.getElementById('attendance-count');
   const tickerEl         = document.getElementById('ticker-text');
+  const tickerCard       = document.getElementById('ticker-card');
   const handBtn          = document.getElementById('hand-btn');
   const speakBtn         = document.getElementById('speak-btn');
   const permToast        = document.getElementById('perm-toast');
   const closingOverlay   = document.getElementById('closing-overlay');
   const closingReturnBtn = document.getElementById('closing-return-btn');
 
-  let jitsiApi      = null;
   let handRaised    = false;
   let hasPermission = false;
-  let isSpeaking    = false;
   let recentJoiners = [];
 
-  const { data: session } = await sb.from('sessions').select('is_active').eq('id', sessionId).maybeSingle();
-  if (!session || !session.is_active) {
-    placeholder.classList.remove('hidden');
-  } else {
+  function buildMeetingUrl() {
+    const fragment = [
+      `config.startWithAudioMuted=true`,
+      `config.startWithVideoMuted=true`,
+      `config.disableDeepLinking=true`,
+      `config.prejoinPageEnabled=false`,
+      `userInfo.displayName=${encodeURIComponent(name)}`,
+    ].join('&');
+    return `https://${CFG.JITSI_DOMAIN}/${roomName}#${fragment}`;
+  }
+
+  function showLiveLobby() {
     placeholder.classList.add('hidden');
-    initJitsi();
+    liveLobby.classList.remove('hidden');
+    if (lobbyNameDisplay) lobbyNameDisplay.textContent = `Logged in as ${name}`;
+  }
+
+  function showWaiting() {
+    liveLobby.classList.add('hidden');
+    placeholder.classList.remove('hidden');
+  }
+
+  const { data: session } = await sb.from('sessions').select('is_active').eq('id', sessionId).maybeSingle();
+  if (session && session.is_active) {
+    showLiveLobby();
+  } else {
+    showWaiting();
   }
 
   await sb.from('participants').upsert({
@@ -79,17 +101,17 @@
   function addToTicker(joinerName) {
     recentJoiners.unshift(`${joinerName} joined`);
     if (recentJoiners.length > 6) recentJoiners.pop();
-    tickerEl.textContent = recentJoiners.join(' • ');
+    const text = recentJoiners.join(' • ');
+    tickerEl.textContent = text;
+    if (tickerCard) tickerCard.textContent = text;
   }
 
   sb.channel(`perm:${pid}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `id=eq.${pid}` },
       (payload) => {
         const granted = payload.new.has_speaking_permission;
-        if (granted && !hasPermission)       { hasPermission = true;  showPermissionUI(); }
-        else if (!granted && hasPermission)  { hasPermission = false; hidePermissionUI();
-          if (isSpeaking && jitsiApi) { jitsiApi.isAudioMuted().then(m => { if (!m) jitsiApi.executeCommand('toggleAudio'); }); isSpeaking = false; }
-        }
+        if (granted && !hasPermission)      { hasPermission = true;  showPermissionUI(); }
+        else if (!granted && hasPermission) { hasPermission = false; hidePermissionUI(); }
       })
     .subscribe();
 
@@ -98,52 +120,17 @@
       (payload) => { if (!payload.new.is_active) showClosingMessage(); })
     .subscribe();
 
-  // Also subscribe to session-started (so waiting students get let in)
   sb.channel('session-start-watch')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions' },
-      (payload) => { if (payload.new.is_active && placeholder && !placeholder.classList.contains('hidden')) { placeholder.classList.add('hidden'); initJitsi(); } })
+      (payload) => {
+        if (payload.new.is_active && liveLobby.classList.contains('hidden')) {
+          showLiveLobby();
+        }
+      })
     .subscribe();
 
-  const jitsiOverlay = document.getElementById('jitsi-overlay');
-
-  function initJitsi() {
-    if (!window.JitsiMeetExternalAPI) { console.error('Jitsi API not loaded'); return; }
-    if (jitsiOverlay) jitsiOverlay.classList.remove('hidden');
-    jitsiApi = new JitsiMeetExternalAPI(CFG.JITSI_DOMAIN, {
-      roomName, parentNode: jitsiContainer, width: '100%', height: '100%',
-      userInfo: { displayName: name },
-      configOverwrite: {
-        startWithAudioMuted: true, startWithVideoMuted: true,
-        disableDeepLinking: true, prejoinPageEnabled: false,
-        disableInviteFunctions: true, toolbarButtons: [],
-        hideConferenceSubject: true, disablePolls: true, disableReactions: true,
-        disableShortcuts: true, notifications: [], disableNotifications: true,
-        enableNoisyMicDetection: false, enableNoAudioDetection: false,
-        gatherStats: false, remoteVideoMenu: { disabled: true },
-        disableSelfViewSettings: true, p2p: { enabled: false },
-        enableLobby: false,
-      },
-      interfaceConfigOverwrite: {
-        TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false,
-        SHOW_WATERMARK_FOR_GUESTS: false, SHOW_BRAND_WATERMARK: false,
-        BRAND_WATERMARK_LINK: '', SHOW_POWERED_BY: false,
-        SHOW_PROMOTIONAL_CLOSE_PAGE: false, MOBILE_APP_PROMO: false,
-        ENABLE_FEEDBACK_ANIMATION: false, DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
-        HIDE_INVITE_MORE_HEADER: true, DEFAULT_BACKGROUND: '#202124',
-        FILM_STRIP_MAX_HEIGHT: 80,
-      },
-    });
-    const hideOverlay = () => { if (jitsiOverlay) jitsiOverlay.classList.add('hidden'); };
-    jitsiApi.on('videoConferenceJoined', () => setTimeout(hideOverlay, 1500));
-    setTimeout(hideOverlay, 15000);
-
-    jitsiApi.on('audioMuteStatusChanged', ({ muted }) => {
-      isSpeaking = !muted;
-      if (speakBtn) {
-        speakBtn.textContent = muted ? '🎤 Tap to Speak' : '🔴 Click to Mute';
-        speakBtn.classList.toggle('is-speaking', !muted);
-      }
-    });
+  if (joinCallBtn) {
+    joinCallBtn.addEventListener('click', () => window.open(buildMeetingUrl(), '_blank'));
   }
 
   handBtn.addEventListener('click', async () => {
@@ -154,27 +141,26 @@
   });
 
   if (speakBtn) {
-    speakBtn.addEventListener('click', () => {
-      if (!hasPermission || !jitsiApi) return;
-      jitsiApi.executeCommand('toggleAudio');
-    });
+    speakBtn.addEventListener('click', () => window.open(buildMeetingUrl(), '_blank'));
   }
 
   function showPermissionUI() {
+    permToast.textContent = '🎉 Coach Victor says you can speak — go to the video call and unmute yourself!';
     permToast.classList.remove('hidden');
-    speakBtn.classList.remove('hidden');
-    permToast.textContent = '🎉 Coach Victor has unmuted you — you may speak!';
+    if (speakBtn) {
+      speakBtn.textContent = '🎤 Go to Call & Unmute';
+      speakBtn.classList.remove('hidden');
+    }
+    setTimeout(() => permToast.classList.add('hidden'), 8000);
   }
+
   function hidePermissionUI() {
     permToast.classList.add('hidden');
-    speakBtn.classList.add('hidden');
-    speakBtn.textContent = '🎤 Tap to Speak';
-    speakBtn.classList.remove('is-speaking');
+    if (speakBtn) speakBtn.classList.add('hidden');
   }
 
   function showClosingMessage() {
     closingOverlay.classList.remove('hidden');
-    if (jitsiApi) { try { jitsiApi.executeCommand('hangup'); } catch(_) {} setTimeout(() => { try { jitsiApi.dispose(); } catch(_) {} }, 800); }
   }
 
   closingReturnBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
