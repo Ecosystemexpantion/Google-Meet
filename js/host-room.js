@@ -8,21 +8,25 @@
   const { createClient } = window.supabase;
   const sb = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
-  const hostPlaceholder  = document.getElementById('host-placeholder');
-  const hostCallCard     = document.getElementById('host-call-card');
-  const hostOpenCallBtn  = document.getElementById('host-open-call-btn');
-  const hostRoomLink     = document.getElementById('host-room-link');
-  const startBtn         = document.getElementById('start-btn');
-  const endBtn           = document.getElementById('end-btn');
-  const muteAllBtn       = document.getElementById('mute-all-btn');
-  const openCallBtn      = document.getElementById('open-call-btn');
-  const sessionBadge     = document.getElementById('session-badge');
-  const sessionBadgeDot  = document.getElementById('badge-dot');
-  const sessionBadgeText = document.getElementById('badge-text');
-  const watchingEl       = document.getElementById('watching-count');
-  const handsEl          = document.getElementById('hands-count');
-  const participantsList = document.getElementById('participants-list');
-  const noParticipants   = document.getElementById('no-participants');
+  const hostPlaceholder   = document.getElementById('host-placeholder');
+  const hostCallCard      = document.getElementById('host-call-card');
+  const hostOpenCallBtn   = document.getElementById('host-open-call-btn');
+  const hostStreamStatus  = document.getElementById('host-stream-status');
+  const startBtn          = document.getElementById('start-btn');
+  const endBtn            = document.getElementById('end-btn');
+  const muteAllBtn        = document.getElementById('mute-all-btn');
+  const openCallBtn       = document.getElementById('open-call-btn');
+  const sessionBadge      = document.getElementById('session-badge');
+  const sessionBadgeDot   = document.getElementById('badge-dot');
+  const sessionBadgeText  = document.getElementById('badge-text');
+  const watchingEl        = document.getElementById('watching-count');
+  const handsEl           = document.getElementById('hands-count');
+  const participantsList  = document.getElementById('participants-list');
+  const noParticipants    = document.getElementById('no-participants');
+  const streamUrlSection  = document.getElementById('stream-url-section');
+  const streamUrlInput    = document.getElementById('stream-url-input');
+  const setStreamBtn      = document.getElementById('set-stream-btn');
+  const streamUrlStatus   = document.getElementById('stream-url-status');
 
   let currentSession = null;
   let participants   = new Map();
@@ -65,11 +69,19 @@
     const roomName = buildRoomName();
     let session = await fetchSession();
     if (!session) {
-      const { data } = await sb.from('sessions').insert({ room_name: roomName, is_active: true, started_at: new Date().toISOString() }).select().single();
+      const { data } = await sb.from('sessions').insert({
+        room_name: roomName, is_active: true, started_at: new Date().toISOString(),
+        stream_url: streamUrlInput.value.trim() || null,
+      }).select().single();
       session = data;
     } else {
-      await sb.from('sessions').update({ room_name: roomName, is_active: true, started_at: new Date().toISOString(), ended_at: null }).eq('id', session.id);
+      await sb.from('sessions').update({
+        room_name: roomName, is_active: true,
+        started_at: new Date().toISOString(), ended_at: null,
+        stream_url: streamUrlInput.value.trim() || null,
+      }).eq('id', session.id);
       session.room_name = roomName; session.is_active = true;
+      session.stream_url = streamUrlInput.value.trim() || null;
     }
     currentSession = session;
     updateSessionUI(true);
@@ -86,6 +98,21 @@
     await sb.from('sessions').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', currentSession.id);
     currentSession.is_active = false;
     updateSessionUI(false);
+  }
+
+  function updateStreamStatusDisplay(streamUrl) {
+    if (!hostStreamStatus) return;
+    if (streamUrl) {
+      hostStreamStatus.textContent = '✅ Students are watching your YouTube Live stream.';
+      hostStreamStatus.style.color = '#4ade80';
+      if (streamUrlStatus) {
+        streamUrlStatus.innerHTML = '<span class="stream-active-badge">🟢 Stream active — students see embedded video</span>';
+      }
+    } else {
+      hostStreamStatus.textContent = 'No stream URL set — students see a "Join Call" button.';
+      hostStreamStatus.style.color = '';
+      if (streamUrlStatus) streamUrlStatus.innerHTML = '';
+    }
   }
 
   function updateSessionUI(active) {
@@ -105,11 +132,28 @@
       if (hostPlaceholder) hostPlaceholder.style.display = 'none';
       if (hostCallCard) hostCallCard.classList.remove('hidden');
       if (hostOpenCallBtn) hostOpenCallBtn.onclick = openVideoCall;
-      if (hostRoomLink) hostRoomLink.textContent = buildHostMeetingUrl(currentSession.room_name);
+      streamUrlSection.classList.remove('hidden');
+      if (currentSession.stream_url) streamUrlInput.value = currentSession.stream_url;
+      updateStreamStatusDisplay(currentSession.stream_url);
     } else {
       if (hostPlaceholder) hostPlaceholder.style.display = '';
       if (hostCallCard) hostCallCard.classList.add('hidden');
+      streamUrlSection.classList.add('hidden');
     }
+  }
+
+  // Save / update stream URL while session is live
+  if (setStreamBtn) {
+    setStreamBtn.addEventListener('click', async () => {
+      if (!currentSession) return;
+      setStreamBtn.disabled = true; setStreamBtn.textContent = 'Saving…';
+      const url = streamUrlInput.value.trim() || null;
+      await sb.from('sessions').update({ stream_url: url }).eq('id', currentSession.id);
+      currentSession.stream_url = url;
+      updateStreamStatusDisplay(url);
+      setStreamBtn.disabled = false; setStreamBtn.textContent = '✓ Saved';
+      setTimeout(() => { setStreamBtn.textContent = 'Set'; }, 2500);
+    });
   }
 
   async function initPresence() {
