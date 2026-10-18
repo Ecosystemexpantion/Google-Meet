@@ -21,7 +21,7 @@ const DEFAULT_SETTINGS = { chat: 'everyone', reactions: true, hands: true, locke
 const ONLINE_MS = 35000;
 // Present when running inside the EEM26 Live Android app (see android/).
 const NATIVE = window.EEM26App || null;
-const SOURCES = ['screen', 'mic', 'camera'];
+const SOURCES = ['screen', 'mic'];
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -241,6 +241,7 @@ function myStage() {
   return S.view?.stage?.find((s) => s.id === S.identity) || null;
 }
 function can(source) {
+  if (source === 'camera') return false; // classes are screen + voice only
   return IS_HOST || !!myStage()?.sources.includes(source);
 }
 function chatBlocked() {
@@ -409,8 +410,7 @@ function showPrejoin() {
       h('p', { class: 'muted' }, 'Opening the room lets attendees in. You control screen sharing, chat, reactions and who can speak.'),
       h('label', { class: 'lv-label', for: 'pj-title' }, 'Session title'), titleIn,
       h('div', { class: 'lv-checks' },
-        h('label', { class: 'lv-check' }, micIn, 'Join with microphone on'),
-        h('label', { class: 'lv-check' }, camIn, 'Join with camera on')),
+        h('label', { class: 'lv-check' }, micIn, 'Join with microphone on')),
       err, btn,
       h('a', { class: 'lv-link', href: 'host.html', onclick: () => sessionStorage.removeItem('eem26_host_pw') }, 'Sign out')));
     // Back from another app after Android closed this tab (or after a
@@ -475,6 +475,7 @@ function goLive() {
   renderAll();
   every(1000, tickTimer);
   if (!IS_HOST) every(4000, adaptScreen);
+  every(4000, screenWatchdog);
   window.__lv = S; // handy for debugging from the console
   S.debug = { setScreenPaused };
 }
@@ -881,7 +882,7 @@ function reconcilePulls() {
   }
   for (const w of wanted) {
     if (S.pulls.has(w.key)) continue;
-    const entry = { kind: w.kind, owner: w.owner, track: null };
+    const entry = { kind: w.kind, owner: w.owner, track: null, key: w.key, at: Date.now() };
     // Everyone gets the full-quality screen; adaptScreen() drops a viewer to
     // the lighter layer only while their own connection is losing data.
     if (w.kind === 'screen' && !w.meta.noRid) entry.rid = S.screenQ.rid;
@@ -950,6 +951,21 @@ function adaptScreen() {
       setScreenRid(entry, 'f');
     }
   }).catch(() => {});
+}
+
+// Safety net (presenter and attendees): a screen that still hasn't shown a
+// picture after 12 s is asked for again on a fresh connection.
+function screenWatchdog() {
+  let redo = false;
+  for (const [key, p] of S.pulls) {
+    if (p.kind !== 'screen' || p.track || Date.now() - p.at < 12000) continue;
+    p.handle.stop();
+    S.pulls.delete(key);
+    redo = true;
+  }
+  if (!redo) return;
+  S.screenMedia = new Media();
+  reconcilePulls();
 }
 
 function resetScreenCounters() {
@@ -1109,8 +1125,8 @@ function toggleScreen() {
           body: h('div', { class: 'lv-form' },
             h('p', {}, 'Phone browsers (Chrome, Safari, Firefox on Android and iPhone) don’t allow websites to share the phone’s screen.'),
             h('p', {}, IS_HOST
-              ? 'To share your screen, open the presenter studio on a laptop or desktop in Chrome or Edge. You can still talk and use your camera from this phone.'
-              : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
+              ? 'To share your screen, open the presenter studio on a laptop or desktop in Chrome or Edge. You can still talk from this phone.'
+              : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak from this phone.')),
           actions: [{ label: 'OK', kind: 'primary' }],
         });
       }
@@ -1451,7 +1467,7 @@ function renderStage() {
       : h('div', { class: 'lv-placeholder', 'data-speaker': HOST_ID },
         avatar(v.host.name, HOST_ID, 'xl'),
         h('div', { class: 'lv-ph-name' }, IS_HOST ? 'You' : v.host.name),
-        h('div', { class: 'lv-ph-sub' }, IS_HOST ? 'Turn on your camera or share your screen to start presenting' : v.host.micOn ? 'Presenting with audio' : 'The presenter will start shortly')));
+        h('div', { class: 'lv-ph-sub' }, IS_HOST ? 'Share your screen to start presenting' : v.host.micOn ? 'Presenting with audio' : 'The presenter will start shortly')));
   }
   label.textContent = labelText;
   label.classList.toggle('hidden', !labelText);
@@ -1846,7 +1862,6 @@ function personMenu(id, anchor) {
     h('div', { class: 'lv-menu-title' }, p.name),
     item(has('screen') ? '✓ Can share screen' : 'Allow screen share', () => setGrants(id, toggled('screen'), has('screen') ? null : `${p.name} can now share their screen`)),
     item(has('mic') ? '✓ Can speak (mic)' : 'Allow to speak (mic)', () => setGrants(id, toggled('mic'), has('mic') ? null : `${p.name} can now unmute`)),
-    item(has('camera') ? '✓ Can use camera' : 'Allow camera', () => setGrants(id, toggled('camera'))),
     item('Make co-presenter (all)', () => setGrants(id, SOURCES, `${p.name} is now a co-presenter`)),
     p.grants.size ? item('Take off stage', () => setGrants(id, [], `${p.name} was taken off stage`)) : null,
     h('div', { class: 'lv-menu-sep' }),
