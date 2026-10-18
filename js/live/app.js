@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=098cf025';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=098cf025';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=098cf025';
+import { icon } from './icons.js?v=a3ee2afe';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=a3ee2afe';
+import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=a3ee2afe';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -49,7 +49,7 @@ const S = {
   local: {},
   shareMotion: false,
   pulls: new Map(),         // key → { handle, track, kind, owner, rid }
-  screenQ: { rid: 'f', got: 0, lost: 0, bad: 0, good: 0, triedAt: 0, holdUntil: 0 },
+  screenQ: { rid: 'h', startUp: true, paused: false, first: true, got: 0, lost: 0, bad: 0, good: 0, triedAt: 0, holdUntil: 0 },
   videoEls: new Map(),      // track id → <video>
   messages: [],
   unread: 0,
@@ -476,6 +476,7 @@ function goLive() {
   every(1000, tickTimer);
   if (!IS_HOST) every(4000, adaptScreen);
   window.__lv = S; // handy for debugging from the console
+  S.debug = { setScreenPaused };
 }
 
 // ── Presenter start ────────────────────────────────────────
@@ -867,7 +868,8 @@ function wantedTracks() {
 
 function reconcilePulls() {
   if (IS_HOST) S.view = hostSnapshot();
-  const wanted = wantedTracks();
+  // a viewer whose connection can't carry the screen keeps the voice only
+  const wanted = wantedTracks().filter((w) => !(w.kind === 'screen' && S.screenQ.paused && !IS_HOST));
   const keep = new Set(wanted.map((w) => w.key));
   for (const [key, pull] of S.pulls) {
     if (!keep.has(key)) {
@@ -882,7 +884,10 @@ function reconcilePulls() {
     // Everyone gets the full-quality screen; adaptScreen() drops a viewer to
     // the lighter layer only while their own connection is losing data.
     if (w.kind === 'screen' && !w.meta.noRid) entry.rid = S.screenQ.rid;
-    entry.handle = S.media.pull(w.meta, {
+    // After a pause the screen comes back on a fresh connection: pulling the
+    // same track again on the old one fails.
+    entry.media = w.kind === 'screen' && S.screenMedia ? S.screenMedia : S.media;
+    entry.handle = entry.media.pull(w.meta, {
       rid: entry.rid,
       onTrack: (track) => {
         entry.track = track;
@@ -903,39 +908,68 @@ function reconcilePulls() {
   schedule('stage', renderStage);
 }
 
-// ── Screen quality per viewer ─────────────────────────────
-// Every 4 s: if more than 4% of the screen's packets were lost in two windows
-// in a row, switch to the lighter layer ("h"). After ~30 s of clean
-// reception try full quality again; if that fails quickly, wait 2 minutes.
+// ── Screen quality per viewer (like Meet's automatic quality) ──
+// A viewer starts on the light layer ("h", small first frame = picture
+// sooner) and moves to full quality after ~8 s if packets arrive cleanly.
+// Every 4 s: >4% loss in two windows on full → light; still >10% on light
+// for three windows → pause the screen so the voice stays clear, and resume
+// it once the audio has been clean for ~30 s. After a failed step up, wait
+// 2 minutes before trying again.
 function adaptScreen() {
   const q = S.screenQ;
   const entry = [...S.pulls.values()].find((p) => p.kind === 'screen' && p.rid && p.track);
-  const pc = S.media?.pc;
-  if (!entry || !pc) return;
-  pc.getStats(entry.track).then((report) => {
+  const mic = [...S.pulls.values()].find((p) => p.kind === 'mic' && p.track);
+  const watch = q.paused ? mic : entry;
+  const pc = watch?.media?.pc;
+  if (!pc) return;
+  pc.getStats(watch.track).then((report) => {
     let got = 0, lost = 0;
-    report.forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'video') { got += r.packetsReceived || 0; lost += r.packetsLost || 0; } });
+    report.forEach((r) => { if (r.type === 'inbound-rtp') { got += r.packetsReceived || 0; lost += r.packetsLost || 0; } });
     const dGot = got - q.got, dLost = lost - q.lost;
     q.got = got; q.lost = lost;
-    if (dGot + dLost < 30) return; // screen not changing: nothing to judge
-    const bad = dLost / (dGot + dLost) > 0.04;
-    q.bad = bad ? q.bad + 1 : 0;
-    q.good = bad ? 0 : q.good + 1;
+    if (q.first) { q.first = false; return; } // first reading only sets the baseline
+    const quiet = dGot + dLost < 30; // screen not changing: nothing to judge
+    const loss = quiet ? 0 : dLost / (dGot + dLost);
+    if (quiet && !q.startUp && !q.paused) return;
+    q.bad = loss > (q.rid === 'h' ? 0.10 : 0.04) ? q.bad + 1 : 0;
+    q.good = q.bad ? 0 : q.good + 1;
     const now = Date.now();
-    if (q.rid === 'f' && q.bad >= 2) {
-      if (now - q.triedAt < 20000) q.holdUntil = now + 120000; // full quality just failed again
+    if (q.paused) {
+      if (q.good >= 8 && now > q.holdUntil) { q.triedAt = now; setScreenPaused(false); }
+    } else if (q.rid === 'f' && q.bad >= 2) {
+      if (now - q.triedAt < 20000) q.holdUntil = now + 120000;
       setScreenRid(entry, 'h');
-    } else if (q.rid === 'h' && q.good >= 8 && now > q.holdUntil) {
+    } else if (q.rid === 'h' && q.bad >= 3) {
+      if (now - q.triedAt < 20000) q.holdUntil = now + 120000;
+      setScreenPaused(true);
+    } else if (q.rid === 'h' && q.good >= (q.startUp ? 2 : 8) && (q.startUp || now > q.holdUntil)) {
+      q.startUp = false;
       q.triedAt = now;
       setScreenRid(entry, 'f');
     }
   }).catch(() => {});
 }
 
+function resetScreenCounters() {
+  Object.assign(S.screenQ, { bad: 0, good: 0, got: 0, lost: 0, first: true });
+}
+
 function setScreenRid(entry, rid) {
   S.screenQ.rid = entry.rid = rid;
-  S.screenQ.bad = S.screenQ.good = 0;
+  resetScreenCounters();
   entry.handle.setRid(rid);
+  schedule('stage', renderStage);
+}
+
+function setScreenPaused(paused) {
+  S.screenQ.paused = paused;
+  S.screenQ.rid = 'h';
+  resetScreenCounters();
+  if (!paused) {
+    S.screenMedia = new Media();
+    toast('Showing the screen again', 'success');
+  }
+  reconcilePulls();
 }
 
 function pulled(owner, kind) {
@@ -1355,7 +1389,12 @@ function renderStage() {
       setOnly(main, presentingCard(track));
     } else if (track) {
       setOnly(main, videoEl(track, 'lv-video contain'));
-      labelText = `${share.id === HOST_ID ? '' : '🖥 '}${share.name} is presenting`;
+      labelText = `${share.id === HOST_ID ? '' : '🖥 '}${share.name} is presenting${!IS_HOST && S.screenQ.rid === 'h' && !S.screenQ.startUp ? ' · lower quality for your connection' : ''}`;
+    } else if (S.screenQ.paused && !IS_HOST) {
+      setPlaceholder(main, 'paused', h('div', { class: 'lv-placeholder' },
+        h('div', { class: 'lv-ph-name' }, 'Screen paused — weak connection'),
+        h('div', { class: 'lv-ph-sub' }, 'You can still hear the class. The screen comes back by itself when your connection improves.'),
+        h('button', { class: 'lv-btn', onclick: () => { S.screenQ.holdUntil = Date.now() + 60000; setScreenPaused(false); } }, 'Show the screen anyway')));
     } else {
       setPlaceholder(main, `load-${share.id}`, h('div', { class: 'lv-placeholder' }, h('div', { class: 'lv-spin lg' }), h('div', { class: 'lv-ph-sub' }, `Loading ${share.name}’s screen…`)));
     }
