@@ -81,6 +81,7 @@ await app.evaluate(async ({ api, token }) => {
 
 const playing = (p) => p.waitForFunction(() => { const v = document.querySelector('#lv-main video'); return v && v.videoWidth > 0 && !v.paused; }, null, { timeout: 20000 });
 await check('presenter sees a preview of the phone share', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }).then(() => host.waitForFunction(() => document.querySelector('.lv-presenting video')?.videoWidth > 0, null, { timeout: 15000 })));
+
 await check('attendee sees the phone screen', () => playing(guest));
 await check('attendee sees "presenting" label', () => guest.waitForFunction(() => /is presenting/.test(document.querySelector('#lv-stage-label').textContent), null, { timeout: 10000 }));
 await check('app mic replaces the browser mic', async () => {
@@ -105,12 +106,25 @@ await late.click('#pj-join');
 await check('someone joining meanwhile still sees the phone screen', () => playing(late));
 await check('every viewer gets full quality; a weak connection drops to the lighter layer', async () => {
   const size = (p) => p.evaluate(() => document.querySelector('#lv-main video').videoHeight);
+  // viewers start on the light layer for a fast first picture, then step up
+  const onFull = () => [...window.__lv.pulls.values()].find((p) => p.kind === 'screen')?.rid === 'f';
+  await guest.waitForFunction(onFull, null, { timeout: 30000 });
+  await late.waitForFunction(onFull, null, { timeout: 30000 });
   await late.waitForTimeout(3000);
   const [big, phone] = [await size(guest), await size(late)];
   if (!(phone > 0 && phone === big)) throw new Error(`computer ${big}p, phone ${phone}p`);
   // what adaptScreen() does when packets are being lost
-  await late.evaluate(() => { const e = [...window.__lv.pulls.values()].find((p) => p.kind === 'screen'); e.rid = 'h'; e.handle.setRid('h'); });
+  await late.evaluate(() => { const e = [...window.__lv.pulls.values()].find((p) => p.kind === 'screen'); window.__lv.screenQ.holdUntil = Date.now() + 600000; e.rid = 'h'; window.__lv.screenQ.rid = 'h'; e.handle.setRid('h'); });
   await late.waitForFunction((b) => { const h = document.querySelector('#lv-main video').videoHeight; return h > 0 && h <= b * 0.6; }, big, { timeout: 10000 });
+});
+
+await check('a very weak connection pauses the screen but keeps the voice, then recovers', async () => {
+  await late.evaluate(() => window.__lv.debug.setScreenPaused(true));
+  await late.waitForSelector('#lv-main :text("Screen paused")', { timeout: 5000 });
+  const kinds = await late.evaluate(() => [...window.__lv.pulls.values()].map((p) => p.kind));
+  if (kinds.includes('screen') || !kinds.includes('mic')) throw new Error(`pulls: ${kinds}`);
+  await late.click('#lv-main button:has-text("Show the screen anyway")');
+  await playing(late);
 });
 
 // ── Presenter comes back: the studio rejoins on its own ──
