@@ -1,0 +1,7 @@
+# Used by the Supabase GitHub integration / CLI when deploying from this repo.
+project_id = "leqizarzgfpiriknpnxw"
+
+[functions.livekit]
+# The function authenticates callers itself (host password / signed LiveKit
+# token). Gateway JWT checks would also reject the browser's CORS preflight.
+verify_jwt = false
