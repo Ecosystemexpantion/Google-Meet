@@ -60,15 +60,24 @@ function safeEqual(a, b) {
  * @param {typeof fetch} [opts.fetchImpl]
  */
 export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) }) {
-  const cfg = {
-    appId: env('CF_SFU_APP_ID'),
-    appToken: env('CF_SFU_APP_TOKEN'),
-    turnKeyId: env('CF_TURN_KEY_ID'),
-    turnToken: env('CF_TURN_KEY_TOKEN'),
-    sfuBase: env('CF_SFU_API_BASE') || 'https://rtc.live.cloudflare.com/v1',
-    hostPassword: env('HOST_PASSWORD'),
-    maxAttendees: Number(env('MAX_PARTICIPANTS') || 300),
-  };
+  // Settings come from Edge Function secrets, falling back to Supabase Vault
+  // (secrets named lv_<lowercase name>, read once per worker via the store).
+  let cfg = null;
+  let cfgPromise = null;
+  const loadConfig = () => (cfgPromise ||= (async () => {
+    const vault = store.loadConfig ? await store.loadConfig().catch((e) => { console.error('vault', e); return {}; }) : {};
+    const get = (k) => env(k) || vault[`lv_${k.toLowerCase()}`];
+    cfg = {
+      appId: get('CF_SFU_APP_ID'),
+      appToken: get('CF_SFU_APP_TOKEN'),
+      turnKeyId: get('CF_TURN_KEY_ID'),
+      turnToken: get('CF_TURN_KEY_TOKEN'),
+      sfuBase: get('CF_SFU_API_BASE') || 'https://rtc.live.cloudflare.com/v1',
+      hostPassword: get('HOST_PASSWORD'),
+      maxAttendees: Number(get('MAX_PARTICIPANTS') || 300),
+    };
+    if (!cfg.appId || !cfg.appToken) cfgPromise = null; // retry on the next request
+  })());
   let keyPromise = null;
   const key = () => (keyPromise ||= crypto.subtle.importKey('raw', new TextEncoder().encode(`lv:${cfg.appToken}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']));
 
@@ -220,6 +229,7 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
 
   return async function handle(req) {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+    await loadConfig();
     if (!cfg.appId || !cfg.appToken) {
       return json(500, { error: 'not_configured', message: 'Set CF_SFU_APP_ID and CF_SFU_APP_TOKEN secrets.' });
     }
@@ -251,6 +261,9 @@ export function supabaseStore({ url, serviceKey, fetchImpl = (...a) => fetch(...
     return text ? JSON.parse(text) : null;
   };
   return {
+    async loadConfig() {
+      return rest('rpc/lv_config', { method: 'POST', body: '{}' });
+    },
     async getRoom(name) {
       const rows = await rest(`lv_rooms?name=eq.${encodeURIComponent(name)}&select=*`);
       return rows[0] || null;

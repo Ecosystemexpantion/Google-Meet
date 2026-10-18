@@ -68,7 +68,7 @@ You don't run any server of your own.
 4. Optional but recommended: **Realtime → TURN → Create**, then copy the **Key ID** and **API Token**. This helps attendees on strict office or school networks connect, and shares the same free 1,000 GB.
 
 ### 2. Supabase: tables, secrets, function
-1. **Tables.** In the Supabase dashboard, open SQL Editor, paste `supabase/migrations/20261018000000_classroom.sql` and click Run. If the GitHub integration is connected, a push applies it automatically.
+1. **Tables.** In the Supabase dashboard, open SQL Editor, paste the files in `supabase/migrations/` and click Run. If the GitHub integration is connected, a push applies it automatically.
 2. **Secrets.** Go to Edge Functions → Secrets (<https://supabase.com/dashboard/project/leqizarzgfpiriknpnxw/functions/secrets>) and add:
 
    | Name | Value |
@@ -79,6 +79,8 @@ You don't run any server of your own.
    | `CF_TURN_KEY_ID` | *(optional)* TURN Key ID |
    | `CF_TURN_KEY_TOKEN` | *(optional)* TURN API Token |
    | `MAX_PARTICIPANTS` | *(optional)* default `300` |
+
+   *Alternative:* the function also reads these from **Supabase Vault** as `lv_cf_sfu_app_id`, `lv_cf_sfu_app_token`, `lv_host_password` (etc.), via `public.lv_config()`, which only the service role can call. This project is set up that way. Change a value with `select vault.update_secret((select id from vault.secrets where name='lv_host_password'), 'new-password');`.
 
 3. **Function.** The GitHub integration deploys `supabase/functions/classroom` on push. Or run `supabase functions deploy classroom --no-verify-jwt`. JWT verification must stay off (`supabase/config.toml` sets this), because the function does its own checks.
 
