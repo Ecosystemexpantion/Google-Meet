@@ -2,3 +2,7 @@ node_modules/
 dev/screenshots/
 dev/fakesfu/loadbot/loadbot
 dev/fakesfu/fakesfu
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties

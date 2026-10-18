@@ -486,3 +486,8 @@ select.lv-input { appearance: auto; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Phone screen sharing (EEM26 Cast) */
+.lv-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: #d4d7de; }
+.lv-steps a { font-weight: 600; }
+a.lv-btn.lg { text-decoration: none; }
