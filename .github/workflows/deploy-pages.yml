@@ -37,6 +37,10 @@ jobs:
           mkdir -p app
           cp android/app/build/outputs/apk/release/app-release.apk app/eem26-live.apk
           cp app/eem26-live.apk app/eem26-cast.apk  # the old link keeps working
+          # what the installed app compares against for in-app updates
+          code=$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' android/app/build.gradle.kts)
+          name=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' android/app/build.gradle.kts)
+          printf '{"versionCode":%s,"versionName":"%s"}\n' "$code" "$name" > app/version.json
 
       # Version the site's own JS/CSS URLs so phones never run a stale copy
       # (GitHub Pages lets browsers cache files for 10 minutes).

@@ -27,6 +27,11 @@ class HomeActivity : Activity() {
         buildUi()
     }
 
+    override fun onResume() {
+        super.onResume()
+        Updater.check(this)
+    }
+
     private fun openStudio(page: String) {
         startActivity(Intent(this, StudioActivity::class.java).putExtra(StudioActivity.EXTRA_PAGE, page))
     }
