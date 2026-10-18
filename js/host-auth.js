@@ -1,7 +1,7 @@
 // ─── Host password gate ───────────────────────────────────
 // The password is checked by the server (Supabase Edge Function secret
 // HOST_PASSWORD); nothing secret lives in the browser.
-import { api } from './live/api.js?v=a3ee2afe';
+import { api } from './live/api.js?v=b74fc050';
 
 const form      = document.getElementById('auth-form');
 const passInput = document.getElementById('password-input');

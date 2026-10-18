@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=a3ee2afe';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=a3ee2afe';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=a3ee2afe';
+import { icon } from './icons.js?v=b74fc050';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=b74fc050';
+import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=b74fc050';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -208,7 +208,7 @@ function hostSnapshot() {
     count: online.length + 1,
     host: {
       name: S.name,
-      micOn: !!S.castMic || !!l.mic?.on,
+      micOn: S.castMic ? !S.castMuted : !!l.mic?.on,
       camOn: !!l.camera?.meta,
       sharing: !!l.screen?.meta,
       shareAt: l.screen?.at || 0,
@@ -706,6 +706,7 @@ function onRoom(msg) {
       S.poll = msg.poll || S.poll;
       applySettings(before);
       reconcilePulls();
+      applyHostMute();
       onMyStage();
       renderAll();
       break;
@@ -897,6 +898,7 @@ function reconcilePulls() {
           el.srcObject = new MediaStream([track]);
           if (S.sinkId && el.setSinkId) el.setSinkId(S.sinkId).catch(() => {});
           $('#lv-audio-sink').append(el);
+          if (entry.owner === HOST_ID && entry.kind === 'mic') el.muted = !S.view?.host?.micOn;
           el.play().catch(() => $('#lv-audio-unlock').classList.remove('hidden'));
           entry.audio = el;
         }
@@ -1023,6 +1025,22 @@ function media(fn) {
   return run;
 }
 
+// The EEM26 Live app is the presenter's microphone while it shares: mute it
+// in the app (stops sending), and tell everyone so their players go silent
+// at once (also covers an app too old to mute itself).
+function toggleCastMic() {
+  S.castMuted = !S.castMuted;
+  try { NATIVE?.setMicMuted?.(S.castMuted); } catch { /* app too old */ }
+  toast(S.castMuted ? 'Microphone muted' : 'Microphone on', 'info');
+  afterLocalChange();
+}
+
+// Viewers: silence the presenter's audio while they're muted.
+function applyHostMute() {
+  const on = !!S.view?.host?.micOn;
+  for (const p of S.pulls.values()) if (p.owner === HOST_ID && p.kind === 'mic' && p.audio) p.audio.muted = !on;
+}
+
 function toggleMic() {
   return media(async () => setMic(!S.local.mic?.on));
 }
@@ -1076,6 +1094,11 @@ function toggleScreen() {
         NATIVE.startShare(endpoint(), S.token, S.room);
         return;
       }
+      if (!IS_HOST && NATIVE?.startGuestShare) { // attendee in the app, allowed to share
+        NATIVE.startGuestShare(endpoint(), S.token);
+        toast('Starting your screen share…', 'info');
+        return;
+      }
       if (IS_HOST && /Android/i.test(navigator.userAgent)) {
         if (!$('.lv-modal-wrap')) castModal();
         return;
@@ -1087,7 +1110,9 @@ function toggleScreen() {
             h('p', {}, 'Phone browsers (Chrome, Safari, Firefox on Android and iPhone) don’t allow websites to share the phone’s screen.'),
             h('p', {}, IS_HOST
               ? 'To share your screen, open the presenter studio on a laptop or desktop in Chrome or Edge. You can still talk and use your camera from this phone.'
-              : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
+              : /Android/i.test(navigator.userAgent)
+                ? h('span', {}, 'On Android, install the EEM26 Live app, tap “Join a class” and share from there. ', h('a', { href: new URL('cast.html', location.href).href, target: '_blank' }, 'Get the app'), '. Or join from a laptop or desktop in Chrome or Edge.')
+                : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
           actions: [{ label: 'OK', kind: 'primary' }],
         });
       }
@@ -1123,7 +1148,9 @@ function toggleScreen() {
 }
 
 function stopScreen() {
-  if (S.local.screen?.cast) {
+  if (S.local.screen?.guestCast) {
+    try { NATIVE?.stopShare(); } catch { /* ignore */ }
+  } else if (S.local.screen?.cast) {
     api('cast-stop', { token: S.token }).catch(() => {});
     try { NATIVE?.stopShare(); } catch { /* app too old */ }
     S.castMic = null;
@@ -1132,6 +1159,21 @@ function stopScreen() {
   stopLocal('screenAudio');
   stopLocal('screen');
 }
+
+// Attendee inside the EEM26 Live app: the app publishes the phone screen and
+// tells this page the track, which goes to the presenter like a browser share.
+window.__eem26Share = (info) => {
+  if (IS_HOST || !S.live) return;
+  if (info?.screen) {
+    if (!can('screen')) { try { NATIVE?.stopShare(); } catch { /* ignore */ } return; }
+    S.local.screen = { guestCast: true, meta: { ...info.screen, location: 'remote', noRid: !info.screen.simulcast }, at: Date.now() };
+    toast('Your phone screen is live', 'success');
+  } else if (S.local.screen?.guestCast) {
+    delete S.local.screen;
+    toast('Screen sharing stopped', 'info');
+  }
+  afterLocalChange();
+};
 
 // EEM26 Live (Android app) publishes the phone screen + mic straight to the
 // SFU and reports the tracks through the API; adopt them as the presenter's.
@@ -1144,6 +1186,7 @@ function applyCast(cast) {
     if (S.local.screen && !cur) stopScreen();
     S.local.screen = { cast: true, key, meta: { ...cast.screen, location: 'remote', noRid: !cast.screen.simulcast }, at: Date.now() };
     S.castMic = cast.mic ? { ...cast.mic, location: 'remote' } : null;
+    S.castMuted = false;
     if (S.castMic && S.local.mic) media(async () => releaseMic()); // the app's mic takes over
     toast('Your phone screen is live for everyone', 'success');
     afterLocalChange();
@@ -1485,7 +1528,8 @@ function renderControls() {
   const right = h('div', { class: 'lv-ctl-group right' });
 
   if (IS_HOST && S.castMic) {
-    center.append(ctrl('mic', 'mic', 'Phone mic', { on: () => toast('Your microphone is coming from the EEM26 Live app. Stop presenting to switch back.', 'info') }));
+    const on = !S.castMuted;
+    center.append(ctrl('mic', on ? 'mic' : 'micOff', on ? 'Mute' : 'Unmute', { off: !on, on: toggleCastMic }));
   } else if (can('mic')) {
     const on = !!l.mic?.on;
     center.append(ctrl('mic', on ? 'mic' : 'micOff', on ? 'Mute' : 'Unmute', { off: !on, on: toggleMic }));
