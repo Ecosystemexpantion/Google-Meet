@@ -48,6 +48,8 @@ export class Media {
   constructor() {
     this.pt = new PartyTracks({ prefix: SFU() });
     this.state$ = this.pt.peerConnectionState$;
+    this.pc = null; // for reading receive stats (see adaptScreen in app.js)
+    this.pt.peerConnection$.subscribe((pc) => { this.pc = pc; });
   }
 
   /**

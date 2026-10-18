@@ -48,7 +48,8 @@ const S = {
   // local media: kind → { track, handle, meta, on }
   local: {},
   shareMotion: false,
-  pulls: new Map(),         // key → { handle, track, kind, owner }
+  pulls: new Map(),         // key → { handle, track, kind, owner, rid }
+  screenQ: { rid: 'f', got: 0, lost: 0, bad: 0, good: 0, triedAt: 0, holdUntil: 0 },
   videoEls: new Map(),      // track id → <video>
   messages: [],
   unread: 0,
@@ -473,6 +474,7 @@ function goLive() {
   openPanel(S.panel);
   renderAll();
   every(1000, tickTimer);
+  if (!IS_HOST) every(4000, adaptScreen);
   window.__lv = S; // handy for debugging from the console
 }
 
@@ -874,12 +876,14 @@ function reconcilePulls() {
       S.pulls.delete(key);
     }
   }
-  const small = window.innerWidth < 900;
   for (const w of wanted) {
     if (S.pulls.has(w.key)) continue;
     const entry = { kind: w.kind, owner: w.owner, track: null };
+    // Everyone gets the full-quality screen; adaptScreen() drops a viewer to
+    // the lighter layer only while their own connection is losing data.
+    if (w.kind === 'screen' && !w.meta.noRid) entry.rid = S.screenQ.rid;
     entry.handle = S.media.pull(w.meta, {
-      rid: w.kind === 'screen' && !w.meta.noRid ? (small ? 'h' : 'f') : undefined,
+      rid: entry.rid,
       onTrack: (track) => {
         entry.track = track;
         if (track.kind === 'audio') {
@@ -897,6 +901,41 @@ function reconcilePulls() {
     S.pulls.set(w.key, entry);
   }
   schedule('stage', renderStage);
+}
+
+// ── Screen quality per viewer ─────────────────────────────
+// Every 4 s: if more than 4% of the screen's packets were lost in two windows
+// in a row, switch to the lighter layer ("h"). After ~30 s of clean
+// reception try full quality again; if that fails quickly, wait 2 minutes.
+function adaptScreen() {
+  const q = S.screenQ;
+  const entry = [...S.pulls.values()].find((p) => p.kind === 'screen' && p.rid && p.track);
+  const pc = S.media?.pc;
+  if (!entry || !pc) return;
+  pc.getStats(entry.track).then((report) => {
+    let got = 0, lost = 0;
+    report.forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'video') { got += r.packetsReceived || 0; lost += r.packetsLost || 0; } });
+    const dGot = got - q.got, dLost = lost - q.lost;
+    q.got = got; q.lost = lost;
+    if (dGot + dLost < 30) return; // screen not changing: nothing to judge
+    const bad = dLost / (dGot + dLost) > 0.04;
+    q.bad = bad ? q.bad + 1 : 0;
+    q.good = bad ? 0 : q.good + 1;
+    const now = Date.now();
+    if (q.rid === 'f' && q.bad >= 2) {
+      if (now - q.triedAt < 20000) q.holdUntil = now + 120000; // full quality just failed again
+      setScreenRid(entry, 'h');
+    } else if (q.rid === 'h' && q.good >= 8 && now > q.holdUntil) {
+      q.triedAt = now;
+      setScreenRid(entry, 'f');
+    }
+  }).catch(() => {});
+}
+
+function setScreenRid(entry, rid) {
+  S.screenQ.rid = entry.rid = rid;
+  S.screenQ.bad = S.screenQ.good = 0;
+  entry.handle.setRid(rid);
 }
 
 function pulled(owner, kind) {
