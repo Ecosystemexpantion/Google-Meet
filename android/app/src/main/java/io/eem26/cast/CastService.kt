@@ -53,6 +53,8 @@ class CastService : Service() {
         const val EXTRA_API = "api"
         const val EXTRA_TOKEN = "token"
         const val EXTRA_MIC = "mic"
+        /** An attendee sharing (allowed by the presenter): report to the page, not the server. */
+        const val EXTRA_GUEST = "guest"
         private const val CHANNEL = "cast"
         private const val NOTIFICATION_ID = 26
         private const val FULL_BPS = 1_500_000
@@ -64,6 +66,15 @@ class CastService : Service() {
             private set
         /** Called on the main thread whenever [status] changes. */
         var listener: ((String) -> Unit)? = null
+        /** Attendee shares: called on the main thread with the track JSON when live, null when it ends. */
+        var shareListener: ((String?) -> Unit)? = null
+
+        @Volatile private var instance: CastService? = null
+
+        /** Mute or unmute the shared microphone without stopping the share. */
+        fun setMicMuted(muted: Boolean) {
+            instance?.audioTrack?.setEnabled(!muted)
+        }
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -76,6 +87,8 @@ class CastService : Service() {
     private var helper: SurfaceTextureHelper? = null
     private var pc: PeerConnection? = null
     private var signaling: Signaling? = null
+    @Volatile private var audioTrack: org.webrtc.AudioTrack? = null
+    private var guest = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -93,7 +106,8 @@ class CastService : Service() {
     }
 
     private fun start(intent: Intent) {
-        val mic = intent.getBooleanExtra(EXTRA_MIC, true)
+        guest = intent.getBooleanExtra(EXTRA_GUEST, false)
+        val mic = intent.getBooleanExtra(EXTRA_MIC, true) && !guest
         // Android 14+: the foreground service must be running before the
         // screen capture permission is used.
         var type = 0
@@ -104,6 +118,7 @@ class CastService : Service() {
 
         running = true
         stopping = false
+        instance = this
         setStatus("Connecting…")
         val resultData: Intent? = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
@@ -157,6 +172,7 @@ class CastService : Service() {
         capturer.startCapture(w, h, 15)
         val videoTrack = factory.createVideoTrack("screen", videoSource)
         val audioTrack = if (mic) factory.createAudioTrack("mic", factory.createAudioSource(voiceConstraints())) else null
+        this.audioTrack = audioTrack
 
         // Connection to Cloudflare
         val config = PeerConnection.RTCConfiguration(sig.iceServers()).apply {
@@ -212,6 +228,17 @@ class CastService : Service() {
         // Some encoders only honour the limits once negotiation is done.
         applySendLimits(videoTx)
         setStatus("Going live…")
+
+        if (guest) {
+            // The class page (attendee) tells the presenter about this track.
+            val info = JSONObject().put("screen", JSONObject()
+                .put("sessionId", sig.sessionId).put("trackName", screenName).put("simulcast", true))
+            main.post { shareListener?.invoke(info.toString()) }
+            while (!stopping) {
+                try { Thread.sleep(1_000) } catch (e: InterruptedException) { return }
+            }
+            return
+        }
 
         // Heartbeat: keeps the class showing this share; the presenter studio
         // answers stop=true when "Stop presenting" is pressed.
@@ -300,14 +327,16 @@ class CastService : Service() {
             stopping = true
         }
         Thread {
-            try { signaling?.takeIf { it.sessionId.isNotEmpty() }?.stopped() } catch (_: Exception) {}
+            if (!guest) try { signaling?.takeIf { it.sessionId.isNotEmpty() }?.stopped() } catch (_: Exception) {}
             try { capturer?.stopCapture() } catch (_: Exception) {}
             try { capturer?.dispose() } catch (_: Exception) {}
             try { pc?.dispose() } catch (_: Exception) {}
             try { helper?.dispose() } catch (_: Exception) {}
             try { factory?.dispose() } catch (_: Exception) {}
             try { egl?.release() } catch (_: Exception) {}
-            capturer = null; pc = null; helper = null; factory = null; egl = null
+            capturer = null; pc = null; helper = null; factory = null; egl = null; audioTrack = null
+            if (instance === this) instance = null
+            if (guest) main.post { shareListener?.invoke(null) }
             worker?.interrupt()
             running = false
             setStatus(reason)

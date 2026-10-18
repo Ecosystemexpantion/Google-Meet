@@ -85,7 +85,7 @@ await check('presenter sees a preview of the phone share', () => host.waitForSel
 await check('attendee sees the phone screen', () => playing(guest));
 await check('attendee sees "presenting" label', () => guest.waitForFunction(() => /is presenting/.test(document.querySelector('#lv-stage-label').textContent), null, { timeout: 10000 }));
 await check('app mic replaces the browser mic', async () => {
-  await host.waitForSelector('#ctl-mic .lv-ctrl-label:has-text("Phone mic")', { state: 'attached', timeout: 5000 });
+  await host.waitForFunction(() => window.__lv.castMic && document.querySelector('#ctl-mic'), null, { timeout: 5000 });
   const micTrack = await guest.evaluate(() => window.__lv.view.host.tracks.mic?.trackName);
   if (!/^cast-mic-/.test(micTrack || '')) throw new Error(`mic track is ${micTrack}`);
 });
@@ -135,6 +135,51 @@ await check('attendees reconnect to the presenter (banner clears, chat back)', a
   await guest.waitForSelector('#lv-chat-input:not([disabled])', { timeout: 5000 });
 });
 await check('presenter sees the phone share again', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }));
+
+// ── Presenter mutes while the app provides the microphone ──
+const hostMicMuted = () => [...window.__lv.pulls.values()].find((p) => p.owner === 'host' && p.kind === 'mic')?.audio?.muted;
+await host.click('#ctl-mic');
+await check('presenter can mute the app microphone; attendees go silent', () => guest.waitForFunction((f) => eval(f)() === true, hostMicMuted.toString(), { timeout: 10000 }));
+await host.click('#ctl-mic');
+await check('…and unmute it again', () => guest.waitForFunction((f) => eval(f)() === false, hostMicMuted.toString(), { timeout: 10000 }));
+
+// ── An attendee on a phone, allowed to share, shares through the EEM26 Live app ──
+const bo = await page({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36 EEM26App/2' });
+await bo.addInitScript(() => {
+  delete MediaDevices.prototype.getDisplayMedia;
+  window.EEM26App = { startGuestShare: (api, token) => { window.__shareReq = { api, token }; }, stopShare: () => { window.__stopped = true; } };
+});
+await bo.goto(`${BASE}/room.html?rm=${ROOM}&n=Bo&pid=bobobobobo01`);
+await bo.click('#pj-join');
+await bo.waitForSelector('[data-state=live]');
+await host.click('#ctl-people');
+await host.click('.lv-person:has-text("Bo") .lv-icon-btn');
+await host.click('.lv-menu-item:has-text("Allow screen share")');
+await bo.waitForSelector('#ctl-screen', { state: 'attached', timeout: 10000 });
+await bo.evaluate(() => document.querySelector('#ctl-screen').click());
+await check('attendee in the app asks the app to share', () => bo.waitForFunction(() => !!window.__shareReq, null, { timeout: 5000 }));
+const req = await bo.evaluate(() => window.__shareReq);
+const boScreen = await app.evaluate(async ({ api, token }) => {
+  const post = async (path, body, headers = {}) => (await fetch(`${api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined })).json();
+  const s = await post('/sfu/sessions/new', null, { 'x-lv-token': token });
+  const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 720, height: 1280 } });
+  const tv = pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendonly', sendEncodings: [{ rid: 'f', maxBitrate: 1_500_000 }, { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: 450_000 }] });
+  await pc.setLocalDescription(await pc.createOffer());
+  const trackName = `cast-screen-${crypto.randomUUID().slice(0, 8)}`;
+  const res = await post(`/sfu/sessions/${s.sessionId}/tracks/new`, { sessionDescription: { type: 'offer', sdp: pc.localDescription.sdp }, tracks: [{ location: 'local', mid: tv.mid, trackName }] }, { 'x-lv-sig': s.sig });
+  await pc.setRemoteDescription(res.sessionDescription);
+  window.boPc = pc;
+  return { sessionId: s.sessionId, trackName, simulcast: true };
+}, { api: req.api, token: req.token });
+await bo.evaluate((screen) => window.__eem26Share({ screen }), boScreen);
+await check('others see the attendee’s phone screen', () => guest.waitForFunction(() => /Bo is presenting/.test(document.querySelector('#lv-stage-label').textContent) && document.querySelector('#lv-main video')?.videoWidth > 0, null, { timeout: 20000 }));
+await bo.evaluate(() => document.querySelector('#ctl-screen').click());
+await check('attendee stops sharing from the class page', async () => {
+  await bo.waitForFunction(() => window.__stopped === true, null, { timeout: 5000 });
+  await guest.waitForFunction(() => !/Bo is presenting/.test(document.querySelector('#lv-stage-label').textContent), null, { timeout: 15000 });
+});
+await host.click('#ctl-people'); // close the people panel
 
 await host.click('.lv-presenting button:has-text("Stop presenting")');
 await check('"Stop presenting" stops the app', () => app.waitForFunction(() => window.castStopped === true, null, { timeout: 15000 }));
