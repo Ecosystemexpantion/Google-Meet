@@ -2,14 +2,18 @@
   "name": "eem26-live-classroom",
   "private": true,
   "type": "module",
-  "description": "Live class / webinar platform built on LiveKit (static frontend + Supabase Edge Function token server)",
+  "description": "Live class / webinar platform on Cloudflare Realtime SFU (static frontend + one Supabase Edge Function)",
   "scripts": {
     "dev": "node dev/server.mjs",
-    "test:e2e": "node dev/e2e.mjs"
+    "test:e2e": "node dev/e2e.mjs",
+    "test:load": "node dev/load.mjs 200",
+    "fakesfu": "cd dev/fakesfu && go run .",
+    "build:vendor": "esbuild dev/vendor-entry.mjs --banner:js=\"/* Bundled from partytracks@0.0.56 (ISC, github.com/cloudflare/partykit), rxjs@7.8.2 (Apache-2.0), tiny-invariant (MIT). Rebuild: npm run build:vendor */\" --bundle --format=esm --minify --target=es2020 --legal-comments=eof --outfile=js/vendor/partytracks.mjs"
   },
   "devDependencies": {
-    "livekit-client": "2.22.3",
-    "livekit-server-sdk": "2.19.1",
-    "playwright": "1.56.1"
+    "esbuild": "0.25.10",
+    "partytracks": "0.0.56",
+    "playwright": "1.56.1",
+    "rxjs": "7.8.2"
   }
 }

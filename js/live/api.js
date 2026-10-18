@@ -2,7 +2,7 @@
 const CFG = window.EEM26_CONFIG || {};
 
 export function endpoint() {
-  return CFG.LIVEKIT_TOKEN_ENDPOINT || `${CFG.SUPABASE_URL}/functions/v1/livekit`;
+  return (CFG.CLASSROOM_API || `${CFG.SUPABASE_URL}/functions/v1/classroom`).replace(/\/+$/, '');
 }
 
 export class ApiError extends Error {
@@ -15,11 +15,6 @@ export class ApiError extends Error {
 
 export async function api(action, params = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  // Supabase gateway accepts the public anon key; harmless for other hosts.
-  if (CFG.SUPABASE_ANON_KEY && !CFG.LIVEKIT_TOKEN_ENDPOINT) {
-    headers.apikey = CFG.SUPABASE_ANON_KEY;
-    headers.Authorization = `Bearer ${CFG.SUPABASE_ANON_KEY}`;
-  }
   let res;
   try {
     res = await fetch(endpoint(), { method: 'POST', headers, body: JSON.stringify({ action, ...params }) });

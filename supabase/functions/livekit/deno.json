@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "livekit-server-sdk": "npm:livekit-server-sdk@2.19.1"
-  }
-}

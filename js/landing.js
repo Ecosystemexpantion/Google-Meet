@@ -128,11 +128,10 @@
     return data;
   }
 
-  // ── Realtime subscription ─────────────────────────────────
-  sb.channel('landing-session')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' },
-      (payload) => { refreshUI(payload.new); })
-    .subscribe();
+  // ── Session polling ───────────────────────────────────────
+  // A light check every 15 s instead of a Realtime subscription, so a crowd
+  // waiting on this page doesn't use up the free plan's 200 live connections.
+  setInterval(async () => { refreshUI(await fetchSession()); }, 15000);
 
   // ── Name input ────────────────────────────────────────────
   nameInput.addEventListener('input', () => {

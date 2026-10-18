@@ -1,7 +1,7 @@
 // EEM26 Selar Setup Training — Platform Configuration
 // =====================================================
 // To change the training schedule, update TRAINING_DAY, TRAINING_HOUR etc.
-// The host password and LiveKit keys are NOT here — they are secrets on the
+// The host password and Cloudflare keys are NOT here — they are secrets on the
 // Supabase Edge Function (see README.md → "Secrets").
 // =====================================================
 
@@ -9,9 +9,9 @@ window.EEM26_CONFIG = {
   SUPABASE_URL:      'https://leqizarzgfpiriknpnxw.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcWl6YXJ6Z2ZwaXJpa25wbnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNzgxNTcsImV4cCI6MjA5NTc1NDE1N30.LNSMP3LXJv_QKE9COMmm9OS5axVGqw_60m750c6bBeg',
 
-  // Live classroom (LiveKit). Leave empty to use the Supabase Edge Function at
-  // SUPABASE_URL/functions/v1/livekit — the LiveKit server URL comes from there.
-  LIVEKIT_TOKEN_ENDPOINT: '',
+  // Live classroom API. Leave empty to use the Supabase Edge Function at
+  // SUPABASE_URL/functions/v1/classroom (which talks to Cloudflare Realtime).
+  CLASSROOM_API: '',
 
   // Branding shown in the classroom
   BRAND_SHORT:    'EEM26',

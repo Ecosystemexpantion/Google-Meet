@@ -1,15 +1,14 @@
-// End-to-end smoke test against a local LiveKit dev server + dev/server.mjs.
+// End-to-end test against the fake Cloudflare SFU (dev/fakesfu) + dev/server.mjs.
 //   node dev/e2e.mjs [guestCount]
 // Uses Chromium's fake camera/mic/screen so it runs headless.
 import { chromium } from 'playwright';
-import { readFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const BASE = process.env.BASE || 'http://localhost:5173';
 const GUESTS = Number(process.argv[2] || 3);
 const ROOM = `E2E${Date.now().toString(36)}`;
 const SHOTS = process.env.SHOTS || fileURLToPath(new URL('../dev/screenshots/', import.meta.url));
-const LK_ESM = await readFile(fileURLToPath(new URL('../node_modules/livekit-client/dist/livekit-client.esm.mjs', import.meta.url)));
 
 await mkdir(SHOTS, { recursive: true });
 const browser = await chromium.launch({
@@ -26,7 +25,6 @@ const browser = await chromium.launch({
 async function page(name, viewport = { width: 1440, height: 860 }) {
   const ctx = await browser.newContext({ viewport, permissions: ['camera', 'microphone'] });
   const p = await ctx.newPage();
-  await p.route('https://cdn.jsdelivr.net/npm/livekit-client@*/**', (r) => r.fulfill({ body: LK_ESM, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' } }));
   await p.route('https://cdn.jsdelivr.net/npm/@supabase/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
   p.on('pageerror', (e) => console.error(`[${name}] pageerror`, e.message));
   p.on('console', (m) => { if (m.type() === 'error') console.error(`[${name}] console`, m.text()); });
@@ -157,7 +155,7 @@ await check('late joiner sees the presenter screen', () => videoPlaying(late));
 await host.click('#ctl-room');
 await host.click('.lv-switch-row:has-text("Lock room")');
 await host.waitForTimeout(800);
-const locked = await (await fetch(`${BASE}/api/livekit`, { method: 'POST', body: JSON.stringify({ action: 'join', room: ROOM, name: 'Blocked', id: 'blockedid123' }) })).json();
+const locked = await (await fetch(`${BASE}/api/classroom`, { method: 'POST', body: JSON.stringify({ action: 'join', room: ROOM, name: 'Blocked', id: 'blockedid123' }) })).json();
 await check('locked room rejects new joins', async () => { if (locked.error !== 'locked') throw new Error(JSON.stringify(locked)); });
 await host.click('#ctl-people');
 await host.click('.lv-person:has-text("Late Comer") .lv-icon-btn');
