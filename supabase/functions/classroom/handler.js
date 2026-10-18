@@ -257,8 +257,16 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
     return { sessionId, trackName };
   }
 
+  // The phone share (EEM26 Cast) as attendees should see it, if it's live.
+  // Lets them keep watching while the presenter's class page is in the background.
+  function liveCast(r) {
+    const c = r.cast_info;
+    if (!c || c.stop || !c.screen || Date.now() - c.at > 30000) return null;
+    return { screen: c.screen, mic: c.mic || null };
+  }
+
   function publicRoom(r) {
-    return { name: r.name, open: !!r.open, locked: !!r.locked, title: r.title || '', startedAt: r.started_at ? Date.parse(r.started_at) : null, hostDataSession: r.host_data_session || null };
+    return { name: r.name, open: !!r.open, locked: !!r.locked, title: r.title || '', startedAt: r.started_at ? Date.parse(r.started_at) : null, hostDataSession: r.host_data_session || null, cast: liveCast(r) };
   }
 
   return async function handle(req) {
