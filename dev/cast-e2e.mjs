@@ -86,6 +86,27 @@ await check('app mic replaces the browser mic', async () => {
 });
 await host.screenshot({ path: new URL('./screenshots/11-phone-presenting.png', import.meta.url).pathname });
 
+// ── Presenter switches to another app: Android pauses/closes the Chrome tab ──
+await host.goto(`${BASE}/cast.html`); // leave the studio (same tab keeps its session)
+await check('attendee keeps seeing the phone screen while the presenter page is away', async () => {
+  await guest.waitForSelector('#lv-reconnect.info:has-text("sharing from their phone")', { timeout: 30000 });
+  await playing(guest);
+});
+await check('chat pauses instead of losing messages', () => guest.waitForSelector('#lv-chat-input[disabled]', { timeout: 5000 }));
+const late = await page({ viewport: { width: 390, height: 844 } });
+await late.goto(`${BASE}/room.html?rm=${ROOM}&n=Late&pid=latelatelate1`);
+await late.click('#pj-join');
+await check('someone joining meanwhile still sees the phone screen', () => playing(late));
+
+// ── Presenter comes back: the studio rejoins on its own ──
+await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
+await check('presenter studio rejoins automatically', () => host.waitForSelector('[data-state=live]', { timeout: 20000 }));
+await check('attendees reconnect to the presenter (banner clears, chat back)', async () => {
+  await guest.waitForSelector('#lv-reconnect', { state: 'detached', timeout: 45000 });
+  await guest.waitForSelector('#lv-chat-input:not([disabled])', { timeout: 5000 });
+});
+await check('presenter sees the phone share again', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }));
+
 await host.click('.lv-presenting button:has-text("Stop presenting")');
 await check('"Stop presenting" stops the app', () => app.waitForFunction(() => window.castStopped === true, null, { timeout: 15000 }));
 await check('attendee stage returns to the presenter', () => guest.waitForFunction(() => !document.querySelector('#lv-main video'), null, { timeout: 15000 }));

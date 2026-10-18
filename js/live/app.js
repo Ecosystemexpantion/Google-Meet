@@ -380,9 +380,9 @@ function showPrejoin() {
     const camIn = h('input', { type: 'checkbox', id: 'pj-cam' });
     const err = h('div', { class: 'lv-error hidden', role: 'alert' });
     const btn = h('button', { class: 'lv-btn primary lg', id: 'pj-start' }, 'Start the class');
+    const room = new URLSearchParams(location.search).get('room') || weekRoomName();
     btn.onclick = async () => {
       btn.disabled = true; btn.textContent = 'Opening room…'; err.classList.add('hidden');
-      const room = new URLSearchParams(location.search).get('room') || weekRoomName();
       try {
         S.name = CFG.PRESENTER_NAME || 'Presenter';
         const res = await api('host-open', { password, room, title: titleIn.value, name: S.name });
@@ -409,6 +409,13 @@ function showPrejoin() {
         h('label', { class: 'lv-check' }, camIn, 'Join with camera on')),
       err, btn,
       h('a', { class: 'lv-link', href: 'host.html', onclick: () => sessionStorage.removeItem('eem26_host_pw') }, 'Sign out')));
+    // Back from another app after Android closed this tab (or after a
+    // connection reset): rejoin the class straight away.
+    if (sessionStorage.getItem('lv_host_live') === room) {
+      micIn.checked = false;
+      btn.textContent = 'Rejoining your class…';
+      setTimeout(() => btn.click(), 50);
+    }
     return;
   }
 
@@ -471,6 +478,7 @@ async function startHost(res, room, opts = {}) {
   S.token = res.token;
   S.room = room;
   setAuthToken(res.token);
+  sessionStorage.setItem('lv_host_live', room);
   restoreHostState();
   S.settings = { ...S.settings, title: res.room.title || S.settings.title, locked: res.room.locked };
   S.startedAt = res.room.startedAt || Date.now();
@@ -561,6 +569,7 @@ async function startGuest(res, room) {
   S.hostDataSession = res.room.hostDataSession;
   S.settings = { ...S.settings, title: res.room.title };
   S.startedAt = res.room.startedAt;
+  S.joinCast = res.room.cast;
 
   S.media = new Media();
   S.data = new DataLink();
@@ -569,11 +578,15 @@ async function startGuest(res, room) {
   // Cloudflare doesn't allow publishing and subscribing in one request.
   const [up] = await S.data.add([{ location: 'local', dataChannelName: 'up' }]);
   const [roomCh] = await S.data.add([{ location: 'remote', dataChannelName: 'room', sessionId: S.hostDataSession }]);
-  if (!up || !roomCh) throw new Error('Could not connect to the class. Please try again.');
+  if (!up) throw new Error('Could not connect to the class. Please try again.');
   S.upCh = up;
-  bindRoomChannel(roomCh);
+  // The presenter's channel can be missing while their page is in the
+  // background; join anyway and pick it up when they're back (watchHost).
+  if (roomCh) bindRoomChannel(roomCh);
+  else S.hostDataSession = null;
   await api('register', { token: S.token, dataSession: sessionId });
   goLive();
+  if (S.joinCast) applyCastFallback(S.joinCast); // see the phone share right away
   hello();
   every(10000, () => sendUp({ t: 'ping' }));
   every(5000, watchHost);
@@ -605,21 +618,57 @@ function hello() {
 // If the presenter goes quiet, check whether they reconnected or ended.
 async function watchHost() {
   if (S.ended || Date.now() - S.lastStateAt < 12000) return;
-  if (S.lastStateAt) showReconnect(true, 'The presenter’s connection dropped — waiting for them…');
+  // While the presenter is away, check in every ~20 s (not every tick):
+  // 200 attendees polling quickly would burn through the free function quota.
+  if (S.hostAway && Date.now() - (S.lastRoomInfo || 0) < S.awayPoll) return;
+  S.lastRoomInfo = Date.now();
+  S.awayPoll = 15000 + Math.random() * 10000;
   try {
     const { room } = await api('room-info', { room: S.room });
     if (!room?.open) { if (S.lastStateAt || !room) endClass('ended'); return; }
+    if (room.cast) applyCastFallback(room.cast);
+    setHostAway(room.cast ? 'phone' : 'dropped');
     if (room.hostDataSession && room.hostDataSession !== S.hostDataSession) {
-      S.hostDataSession = room.hostDataSession;
       const old = S.roomCh;
       const [ch] = await S.data.add([{ location: 'remote', dataChannelName: 'room', sessionId: room.hostDataSession }]);
       if (ch) {
+        S.hostDataSession = room.hostDataSession;
         bindRoomChannel(ch);
         if (old) { S.data.close([old.sfuId]); try { old.close(); } catch { /* closed */ } }
         hello();
       }
     }
   } catch (err) { console.warn('watch host', err); }
+}
+
+// The presenter's class page went quiet (on a phone, Android pauses Chrome
+// while they show other apps). If they're sharing with EEM26 Cast, keep
+// showing that share; chat waits until they're back.
+function setHostAway(kind) {
+  S.hostAway = kind;
+  const who = S.view?.host?.name || CFG.PRESENTER_NAME || 'The presenter';
+  if (kind === 'phone') showReconnect(true, `${who} is sharing from their phone — chat resumes when they’re back on the class page.`, 'info');
+  else if (kind === 'dropped' && S.lastStateAt) showReconnect(true, 'The presenter’s connection dropped — waiting for them…');
+  else showReconnect(false);
+  renderChatComposer();
+}
+
+function applyCastFallback(cast) {
+  const v = S.view ? { ...S.view } : {
+    settings: S.settings, startedAt: S.startedAt, count: 0, stage: [], hands: [], blocked: [], roster: null, poll: S.poll,
+    host: { name: CFG.PRESENTER_NAME || 'Presenter', micOn: false, camOn: false, sharing: false, shareAt: 0, tracks: {} },
+  };
+  const tracks = v.host.tracks || {};
+  v.host = {
+    ...v.host,
+    sharing: true,
+    shareAt: v.host.shareAt || 1,
+    micOn: cast.mic ? true : v.host.micOn,
+    tracks: { ...tracks, screen: { ...cast.screen, location: 'remote', noRid: true }, screenAudio: null, mic: cast.mic ? { ...cast.mic, location: 'remote' } : tracks.mic },
+  };
+  S.view = v;
+  reconcilePulls();
+  renderAll();
 }
 
 function onLinkState(state) {
@@ -630,10 +679,11 @@ function onLinkState(state) {
   }
 }
 
-function showReconnect(on, text = 'Reconnecting…') {
+function showReconnect(on, text = 'Reconnecting…', kind = 'warn') {
   let el = $('#lv-reconnect');
   if (on && !el) $('#lv-app').append(el = h('div', { class: 'lv-reconnect', id: 'lv-reconnect' }, h('span', { class: 'lv-spin' }), h('span', {}, text)));
   else if (on) el.lastChild.textContent = text;
+  if (on) el.classList.toggle('info', kind === 'info');
   if (!on && el) el.remove();
 }
 
@@ -644,7 +694,7 @@ function onRoom(msg) {
       const before = S.settings;
       S.view = msg;
       S.lastStateAt = Date.now();
-      showReconnect(false);
+      if (S.hostAway) setHostAway(null);
       S.settings = { ...DEFAULT_SETTINGS, ...msg.settings };
       S.startedAt = msg.startedAt;
       S.poll = msg.poll || S.poll;
@@ -1070,6 +1120,7 @@ function endClass(reason) {
   if (S.ended) return;
   S.ended = true;
   if (!IS_HOST) sendUp({ t: 'bye' });
+  else sessionStorage.removeItem('lv_host_live'); // left or ended on purpose: no auto-rejoin
   teardown();
   $('#lv-app').dataset.state = 'ended';
   showReconnect(false);
@@ -1417,8 +1468,9 @@ function renderChatComposer() {
   if (!box) return;
   const mode = S.settings.chat;
   const blocked = chatBlocked();
-  const disabled = !IS_HOST && (mode === 'off' || blocked);
-  const note = IS_HOST
+  const away = !IS_HOST && !!S.hostAway;
+  const disabled = !IS_HOST && (mode === 'off' || blocked || away);
+  const note = away ? 'Chat is paused until the presenter is back on the class page' : IS_HOST
     ? (mode === 'off' ? 'Chat is off for attendees' : mode === 'to-host' ? 'Attendees send private questions to you' : 'Everyone can chat')
     : blocked ? 'The presenter has muted you in chat'
       : mode === 'off' ? 'The presenter has turned chat off'
@@ -1457,7 +1509,7 @@ function sendChat() {
   const text = input.value.trim();
   if (!text) return;
   const mode = S.settings.chat;
-  if (!IS_HOST && (mode === 'off' || chatBlocked())) return;
+  if (!IS_HOST && (mode === 'off' || chatBlocked() || S.hostAway)) return;
   const priv = !IS_HOST && mode === 'to-host';
   const m = { id: uid().slice(0, 24), from: S.identity, name: S.name, text: text.slice(0, 500), ts: Date.now(), priv, host: IS_HOST };
   if (IS_HOST) {
