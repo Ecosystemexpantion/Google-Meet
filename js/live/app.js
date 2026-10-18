@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=8639ae1f';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=8639ae1f';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=8639ae1f';
+import { icon } from './icons.js?v=a5fe8ade';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=a5fe8ade';
+import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=a5fe8ade';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -666,7 +666,7 @@ function applyCastFallback(cast) {
     sharing: true,
     shareAt: v.host.shareAt || 1,
     micOn: cast.mic ? true : v.host.micOn,
-    tracks: { ...tracks, screen: { ...cast.screen, location: 'remote', noRid: true }, screenAudio: null, mic: cast.mic ? { ...cast.mic, location: 'remote' } : tracks.mic },
+    tracks: { ...tracks, screen: { ...cast.screen, location: 'remote', noRid: !cast.screen.simulcast }, screenAudio: null, mic: cast.mic ? { ...cast.mic, location: 'remote' } : tracks.mic },
   };
   S.view = v;
   reconcilePulls();
@@ -1069,7 +1069,7 @@ function applyCast(cast) {
     const key = `${cast.screen.sessionId}/${cast.screen.trackName}`;
     if (cur?.key === key) return;
     if (S.local.screen && !cur) stopScreen();
-    S.local.screen = { cast: true, key, meta: { ...cast.screen, location: 'remote', noRid: true }, at: Date.now() };
+    S.local.screen = { cast: true, key, meta: { ...cast.screen, location: 'remote', noRid: !cast.screen.simulcast }, at: Date.now() };
     S.castMic = cast.mic ? { ...cast.mic, location: 'remote' } : null;
     if (S.castMic && S.local.mic) media(async () => releaseMic()); // the app's mic takes over
     toast('Your phone screen is live for everyone', 'success');
