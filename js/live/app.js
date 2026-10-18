@@ -1124,6 +1124,14 @@ function toggleScreen() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       // Phone browsers (Android and iPhone) don't let web pages capture the screen.
       if (IS_HOST && NATIVE) { // inside the EEM26 Live app: share natively
+        // The app can only share into one class at a time. If it's still
+        // sharing into another class (or a share that was never stopped),
+        // move it here instead of refusing.
+        if (NATIVE.isSharing?.()) {
+          toast('Moving your screen share to this class…', 'info');
+          NATIVE.stopShare();
+          for (let i = 0; i < 25 && NATIVE.isSharing(); i++) await new Promise((r) => setTimeout(r, 200));
+        }
         NATIVE.startShare(endpoint(), S.token, S.room);
         return;
       }
