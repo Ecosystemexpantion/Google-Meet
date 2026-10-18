@@ -46,7 +46,7 @@ jobs:
         with:
           go-version-file: dev/fakesfu/go.mod
           cache-dependency-path: dev/fakesfu/go.sum
-      - run: go build -o loadbot ./loadbot
+      - run: go build -o "$RUNNER_TEMP/loadbot" ./loadbot
         working-directory: dev/fakesfu
       - name: Test viewers join and watch
         env:
@@ -54,7 +54,7 @@ jobs:
         run: |
           [ -n "$ROOM" ] || . dev/loadtest.env
           n=$(( (VIEWERS + 3 - PART) / 4 ))
-          ./dev/fakesfu/loadbot -api "$API" -room "$ROOM" -n "$n" -rate 4 -d "${MINUTES}m" -chat "$CHAT" -name "Test $PART" 2>&1 | tee bots.log
+          "$RUNNER_TEMP/loadbot" -api "$API" -room "$ROOM" -n "$n" -rate 4 -d "${MINUTES}m" -chat "$CHAT" -name "Test $PART" 2>&1 | tee bots.log
           echo "**Part $PART:** $(grep FINAL bots.log | sed 's/FINAL //') of $n" >> "$GITHUB_STEP_SUMMARY"
 
   probe:

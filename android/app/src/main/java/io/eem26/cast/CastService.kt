@@ -16,6 +16,7 @@ import android.os.Looper
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.EglBase
 import org.webrtc.MediaConstraints
+import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.ResolutionAdjustment
@@ -180,6 +181,11 @@ class CastService : Service() {
         }
         val videoTx = pc.addTransceiver(videoTrack, RtpTransceiver.RtpTransceiverInit(
             RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("cast"), listOf(full, half)))
+        // VP8 first: every browser can play it (some, e.g. Chromium builds and
+        // Firefox on some systems, can't play H.264) and its layers work best.
+        val caps = factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
+        val (vp8, others) = caps.partition { it.name.equals("VP8", ignoreCase = true) }
+        if (vp8.isNotEmpty()) videoTx.setCodecPreferences(vp8 + others)
         // Screens are mostly text: keep them sharp and drop frames instead.
         videoTx.sender.parameters.let { p ->
             p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
