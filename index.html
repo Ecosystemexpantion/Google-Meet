@@ -5,113 +5,86 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>EEM26 — Free Selar Setup Training | Coach Victor</title>
   <meta name="description" content="Join Coach Victor's live Selar setup training. Learn how to sell digital products and receive payments from anywhere in Nigeria and beyond." />
-  <meta property="og:type"        content="website" />
-  <meta property="og:title"       content="Free Selar Setup Training — EEM26 Live" />
-  <meta property="og:description" content="Join Coach Victor live this Sunday 8 PM. Learn Selar in one session." />
-  <meta property="og:image"       content="https://placehold.co/1200x630/6B46C1/white?text=EEM26+Selar+Training" />
-  <link rel="stylesheet" href="style.css?v=6773c834" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
+  <meta name="theme-color" content="#05060b" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Free Selar Setup Training — EEM26 Live" />
+  <meta property="og:description" content="Join Coach Victor live. Learn to sell on Selar in one session." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="glass.css?v=a032eb9d" />
+  <link rel="icon" href="app/mark.svg" type="image/svg+xml" />
+  <style>
+    .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(24px, 5vw, 60px); align-items: center; padding: clamp(36px, 7vw, 90px) 0 40px; }
+    .hero h1 { font-size: clamp(38px, 6.8vw, 76px); margin: 16px 0 20px; }
+    .hero p { font-size: 17.5px; color: var(--text-2); max-width: 54ch; }
+    .hero p + p { margin-top: 12px; }
+    .next { padding: clamp(24px, 4vw, 34px); display: flex; flex-direction: column; gap: 20px; align-items: stretch; text-align: center; }
+    .next h2 { font-family: var(--display); font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+    .next .when { color: var(--text-2); margin-top: -12px; font-size: 14px; }
+    .sec { padding: 40px 0; }
+    .sec h2 { font-size: clamp(28px, 4.4vw, 44px); margin: 10px 0 26px; }
+    .feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feat { padding: 24px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 12px; }
+    .feat .ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, rgba(139,108,255,.55), rgba(63,216,245,.35)); box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+    .feat b { font-size: 16px; letter-spacing: -.01em; }
+    .feat p { font-size: 14px; color: var(--text-2); }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+    .step { padding: 24px; border-radius: var(--r-lg); }
+    .step::before { counter-increment: s; content: '0' counter(s); font-family: var(--display); font-size: 34px; font-weight: 600; letter-spacing: -.04em; display: block; margin-bottom: 8px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .step p { color: var(--text-2); font-size: 14px; margin-top: 4px; }
+    footer { padding: 40px 0 50px; text-align: center; font-size: 12.5px; color: var(--text-3); }
+    footer a { color: var(--text-3); }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; padding-top: 30px; } .feats, .steps { grid-template-columns: 1fr; } }
+  </style>
 </head>
-<body class="page-landing">
-
-  <header class="lp-header">
-    <div class="brand">
-      <span class="brand-chip">EEM26</span>
-      <div>
-        <div class="brand-name">Selar Setup Training</div>
-        <div class="brand-sub">with Coach Victor</div>
-      </div>
-    </div>
+<body>
+  <div class="aurora"><div class="stars"></div><div class="grain"></div></div>
+  <header class="topbar glass">
+    <a class="brand" href="index.html"><img src="app/mark.svg" alt="" /><span>EEM26 <small>with Coach Victor</small></span></a>
+    <a class="btn sm" href="host.html">Presenter</a>
   </header>
 
-  <main class="lp-main">
-
-    <div id="status-stripe" class="status-stripe soon" style="display:none"></div>
-
-    <div id="countdown-wrap" class="countdown-wrap hidden">
-      <p class="countdown-eyebrow">Training starts in</p>
-      <div class="countdown-grid">
-        <div class="cd-unit"><span id="cd-days" class="cd-num">00</span><span class="cd-label">Days</span></div>
-        <span class="cd-sep">:</span>
-        <div class="cd-unit"><span id="cd-hours" class="cd-num">00</span><span class="cd-label">Hours</span></div>
-        <span class="cd-sep">:</span>
-        <div class="cd-unit"><span id="cd-mins" class="cd-num">00</span><span class="cd-label">Mins</span></div>
-        <span class="cd-sep">:</span>
-        <div class="cd-unit"><span id="cd-secs" class="cd-num">00</span><span class="cd-label">Secs</span></div>
-      </div>
-      <p style="margin-top:16px;font-size:14px;color:var(--text-muted);">
-        📅 Every Sunday · 8:00 PM · GMT+1 (West Africa Time)
-      </p>
-    </div>
-
-    <div id="live-block" class="live-block hidden">
-      <div class="live-pill">
-        <span class="live-dot"></span>
-        LIVE NOW — Join Below
-      </div>
-    </div>
-
+  <main class="shell">
     <section class="hero">
-      <h1 class="hero-headline">
-        Stop Losing Sales Because Customers Can't Pay You
-      </h1>
-      <p class="hero-sub">
-        Every week, Nigerian digital entrepreneurs lose thousands of Naira because their
-        payment setup is broken, incomplete, or just not set up at all. Your idea is good.
-        Your content is valuable. But if people can't <em>pay you</em> — you're leaving
-        money on the table every single day.
-      </p>
-      <p class="hero-sub">
-        Coach Victor has helped hundreds of entrepreneurs fix this exact problem with
-        <strong>Selar</strong> — Nigeria's most powerful platform for selling digital products,
-        courses, ebooks, and services online. This Sunday, he'll show you the full setup,
-        live, step by step.
-      </p>
-      <ul class="hero-benefits">
-        <li><span class="ico">💳</span><span>Accept payments in Naira, USD, GBP and more — from customers in Nigeria, the diaspora, and anywhere in the world</span></li>
-        <li><span class="ico">🚀</span><span>Set up your complete Selar storefront in one session — even if you've never sold anything online before</span></li>
-        <li><span class="ico">🤖</span><span>Automate product delivery so customers get what they paid for instantly — 24 hours a day, while you sleep</span></li>
-        <li><span class="ico">📈</span><span>Learn the exact product types that sell fastest right now for Nigerian creators — courses, templates, coaching, memberships</span></li>
-        <li><span class="ico">🔐</span><span>Protect your content from theft and piracy using Selar's built-in security</span></li>
-        <li><span class="ico">✅</span><span>Get your first product <em>live and ready to sell</em> before the session ends tonight</span></li>
-      </ul>
-      <p class="hero-cta-note">
-        ⚡ This is a live, interactive session — not a video you'll watch and forget.
-        Seats are limited. Once Coach Victor opens the room, we start immediately.
-      </p>
+      <div class="reveal">
+        <div class="eyebrow">Free live training · Selar setup</div>
+        <h1 class="display">Get paid for what you <span class="grad-text">create.</span></h1>
+        <p>Every week, creators lose sales because their payment setup is broken, incomplete, or missing. Your idea is good. Your content is valuable. But if people can’t pay you, you’re leaving money on the table.</p>
+        <p>Coach Victor walks you through the full <strong style="color:var(--text)">Selar</strong> setup live, step by step — and you leave with your first product ready to sell.</p>
+      </div>
+      <aside id="next" class="next glass reveal d1">
+        <div class="eyebrow">Next class</div>
+        <h2 id="next-title">Loading…</h2>
+      </aside>
     </section>
 
-    <section id="join-section" class="hidden">
-      <div class="join-card">
-        <h2 class="join-card-heading">Enter Your Name to Join</h2>
-        <input type="text" id="student-name" class="input-field" placeholder="Your first name" maxlength="60" autocomplete="given-name" />
-        <button id="join-btn" class="btn btn-primary" disabled>Join Training Now →</button>
-        <p class="join-note">Free. No download. Works on your phone or computer.</p>
+    <section class="sec">
+      <div class="eyebrow">What you’ll set up</div>
+      <h2 class="display">Everything to start selling, in one session.</h2>
+      <div class="feats">
+        <div class="feat glass soft reveal"><div class="ic" data-i="globe"></div><b>Payments from anywhere</b><p>Accept Naira, Dollars, Pounds and more — from customers at home and abroad.</p></div>
+        <div class="feat glass soft reveal d1"><div class="ic" data-i="bolt"></div><b>Your store, live tonight</b><p>Set up your complete Selar storefront — even if you’ve never sold online before.</p></div>
+        <div class="feat glass soft reveal d2"><div class="ic" data-i="clock"></div><b>Delivery on autopilot</b><p>Customers get what they paid for instantly, 24/7 — while you sleep.</p></div>
+        <div class="feat glass soft reveal"><div class="ic" data-i="poll"></div><b>Products that sell</b><p>The product types moving fastest for creators right now — courses, templates, coaching.</p></div>
+        <div class="feat glass soft reveal d1"><div class="ic" data-i="lock"></div><b>Protected content</b><p>Keep your work safe from piracy with Selar’s built-in protection.</p></div>
+        <div class="feat glass soft reveal d2"><div class="ic" data-i="send"></div><b>First sale ready</b><p>Leave the session with your first product live and ready to sell.</p></div>
       </div>
     </section>
 
-    <section id="waiting-card" class="waiting-card hidden">
-      <div class="spinner"></div>
-      <h3>Coach Victor hasn't opened the room yet</h3>
-      <p>Stay on this page — the session will start any moment.<br>This page updates automatically.</p>
+    <section class="sec">
+      <div class="eyebrow">How it works</div>
+      <h2 class="display">Join from your phone in seconds.</h2>
+      <div class="steps">
+        <div class="step glass soft"><b>Open the class link</b><p>See exactly when it starts, in your own time zone, and add it to your calendar.</p></div>
+        <div class="step glass soft"><b>Enter your name</b><p>When Coach Victor goes live, you’re taken straight in — no app, no sign-up.</p></div>
+        <div class="step glass soft"><b>Watch, chat, ask</b><p>Follow the screen live, chat and react — raise your hand to ask a question.</p></div>
+      </div>
     </section>
-
-    <section class="rules-card">
-      <h4>📋 House Rules for Participants</h4>
-      <ul class="rules-list">
-        <li>✅ Watch Coach Victor's screen live, right in your browser — no app needed</li>
-        <li>✅ You join as a viewer: your microphone and camera stay off</li>
-        <li>✅ Raise your hand ✋ to ask a question — Coach Victor may invite you to speak or share your screen</li>
-        <li>✅ Chat, emoji reactions and live polls are on when Coach Victor enables them</li>
-        <li>⏰ Stay until the end — there's a special announcement at the close</li>
-      </ul>
-    </section>
-
   </main>
+  <footer>© EEM26 · Live classes with Coach Victor · <a href="cast.html">Android app</a></footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=6773c834"></script>
-  <script>document.getElementById('status-stripe').style.display = '';</script>
-  <script src="js/landing.js?v=6773c834"></script>
+  <script src="config.js?v=a032eb9d"></script>
+  <script type="module" src="js/home.js?v=a032eb9d"></script>
 </body>
 </html>
