@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=b74fc050';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=b74fc050';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=b74fc050';
+import { icon } from './icons.js?v=840e5e97';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=840e5e97';
+import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=840e5e97';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -1110,9 +1110,7 @@ function toggleScreen() {
             h('p', {}, 'Phone browsers (Chrome, Safari, Firefox on Android and iPhone) don’t allow websites to share the phone’s screen.'),
             h('p', {}, IS_HOST
               ? 'To share your screen, open the presenter studio on a laptop or desktop in Chrome or Edge. You can still talk and use your camera from this phone.'
-              : /Android/i.test(navigator.userAgent)
-                ? h('span', {}, 'On Android, install the EEM26 Live app, tap “Join a class” and share from there. ', h('a', { href: new URL('cast.html', location.href).href, target: '_blank' }, 'Get the app'), '. Or join from a laptop or desktop in Chrome or Edge.')
-                : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
+              : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
           actions: [{ label: 'OK', kind: 'primary' }],
         });
       }
