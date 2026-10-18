@@ -15,10 +15,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # EEM26 Cast (Android app for sharing a phone screen) is built here and
+      # published with the site at app/eem26-cast.apk. A failed app build
+      # never blocks the website deploy.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Build EEM26 Cast APK
+        id: apk
+        continue-on-error: true
+        run: |
+          gradle -p android assembleRelease --no-daemon --stacktrace
+          mkdir -p app
+          cp android/app/build/outputs/apk/release/app-release.apk app/eem26-cast.apk
+
+      - name: Remove Android build output from the site
+        run: rm -rf android/app/build android/.gradle android/build
+
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./
           publish_branch: gh-pages
-          exclude_assets: '.github,*.yml,*.yaml'
+          exclude_assets: '.github,*.yml,*.yaml,android,dev'

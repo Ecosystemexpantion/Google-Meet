@@ -187,7 +187,33 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
 
       case 'host-poll': {
         const t = await requireHost(body.token);
-        return { attendees: await store.listAttendees(t.room, Number(body.after) || 0) };
+        const [attendees, room] = await Promise.all([store.listAttendees(t.room, Number(body.after) || 0), store.getRoom(t.room)]);
+        const cast = room?.cast_info;
+        // age is measured on the server so phone/computer clock drift doesn't matter
+        return { attendees, cast: cast ? { ...cast, age: Date.now() - cast.at } : null };
+      }
+
+      // EEM26 Cast (Android app) heartbeat: which tracks it's publishing.
+      // Replies stop:true once the presenter pressed "Stop presenting".
+      case 'cast-start': {
+        const t = await requireHost(body.token);
+        const screen = trackMeta(body.screen);
+        if (!screen) throw new HttpError(400, 'bad_meta');
+        const room = await store.getRoom(t.room);
+        if (room?.cast_info?.stop && room.cast_info.screen?.sessionId === screen.sessionId) {
+          await store.saveRoom(t.room, { cast_info: null });
+          return { stop: true };
+        }
+        await store.saveRoom(t.room, { cast_info: { screen, mic: trackMeta(body.mic), at: Date.now() } });
+        return { stop: false };
+      }
+
+      // From the app: it stopped. From the presenter page: ask the app to stop.
+      case 'cast-stop': {
+        const t = await requireHost(body.token);
+        const room = await store.getRoom(t.room);
+        await store.saveRoom(t.room, { cast_info: body.fromApp || !room?.cast_info ? null : { ...room.cast_info, stop: true } });
+        return { ok: true };
       }
 
       case 'room-info': {
@@ -221,6 +247,14 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
       default:
         throw new HttpError(400, 'bad_action');
     }
+  }
+
+  function trackMeta(m) {
+    if (!m || typeof m !== 'object') return null;
+    const sessionId = clean(m.sessionId, 128);
+    const trackName = clean(m.trackName, 80);
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(sessionId) || !/^[A-Za-z0-9_.:-]{1,80}$/.test(trackName)) return null;
+    return { sessionId, trackName };
   }
 
   function publicRoom(r) {

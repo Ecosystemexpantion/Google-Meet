@@ -8,7 +8,7 @@
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
 import { icon } from './icons.js';
-import { api, ApiError, supabaseClient } from './api.js';
+import { api, ApiError, endpoint, supabaseClient } from './api.js';
 import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js';
 
 const CFG = window.EEM26_CONFIG || {};
@@ -205,12 +205,12 @@ function hostSnapshot() {
     count: online.length + 1,
     host: {
       name: S.name,
-      micOn: !!l.mic?.on,
+      micOn: !!S.castMic || !!l.mic?.on,
       camOn: !!l.camera?.meta,
       sharing: !!l.screen?.meta,
       shareAt: l.screen?.at || 0,
       tracks: {
-        mic: l.mic?.meta || null,
+        mic: S.castMic || l.mic?.meta || null,
         camera: l.camera?.meta || null,
         screen: l.screen?.meta || null,
         screenAudio: l.screenAudio?.meta || null,
@@ -514,7 +514,8 @@ async function pollAttendees() {
   if (S.polling) return;
   S.polling = true;
   try {
-    const { attendees } = await api('host-poll', { token: S.token, after: S.attCursor });
+    const { attendees, cast } = await api('host-poll', { token: S.token, after: S.attCursor });
+    applyCast(cast);
     if (!attendees.length) return;
     // newest registration per person wins (a rejoin replaces the old one)
     const latest = new Map(attendees.map((a) => [a.identity, a]));
@@ -795,6 +796,7 @@ function wantedTracks() {
   const out = [];
   if (!v) return out;
   const add = (owner, name, kind, meta) => { if (meta?.sessionId) out.push({ key: `${meta.sessionId}/${meta.trackName}`, owner, name, kind, meta }); };
+  if (IS_HOST && S.local.screen?.cast) add(HOST_ID, v.host.name, 'screen', S.local.screen.meta); // preview of the phone share
   if (!IS_HOST) {
     add(HOST_ID, v.host.name, 'mic', v.host.tracks.mic);
     if (v.host.camOn) add(HOST_ID, v.host.name, 'camera', v.host.tracks.camera);
@@ -825,7 +827,7 @@ function reconcilePulls() {
     if (S.pulls.has(w.key)) continue;
     const entry = { kind: w.kind, owner: w.owner, track: null };
     entry.handle = S.media.pull(w.meta, {
-      rid: w.kind === 'screen' ? (small ? 'h' : 'f') : undefined,
+      rid: w.kind === 'screen' && !w.meta.noRid ? (small ? 'h' : 'f') : undefined,
       onTrack: (track) => {
         entry.track = track;
         if (track.kind === 'audio') {
@@ -928,6 +930,10 @@ function toggleScreen() {
     if (!can('screen')) return;
     if (!navigator.mediaDevices?.getDisplayMedia) {
       // Phone browsers (Android and iPhone) don't let web pages capture the screen.
+      if (IS_HOST && /Android/i.test(navigator.userAgent)) {
+        if (!$('.lv-modal-wrap')) castModal();
+        return;
+      }
       if (!$('.lv-modal-wrap')) {
         modal({
           title: 'Screen sharing needs a computer',
@@ -971,8 +977,54 @@ function toggleScreen() {
 }
 
 function stopScreen() {
+  if (S.local.screen?.cast) {
+    api('cast-stop', { token: S.token }).catch(() => {});
+    S.castMic = null;
+    toast('Stopping your phone share…', 'info');
+  }
   stopLocal('screenAudio');
   stopLocal('screen');
+}
+
+// EEM26 Cast (Android app) publishes the phone screen + mic straight to the
+// SFU and reports the tracks through the API; adopt them as the presenter's.
+function applyCast(cast) {
+  const live = cast && !cast.stop && cast.age < 30000 && cast.screen;
+  const cur = S.local.screen?.cast ? S.local.screen : null;
+  if (live) {
+    const key = `${cast.screen.sessionId}/${cast.screen.trackName}`;
+    if (cur?.key === key) return;
+    if (S.local.screen && !cur) stopScreen();
+    S.local.screen = { cast: true, key, meta: { ...cast.screen, location: 'remote', noRid: true }, at: Date.now() };
+    S.castMic = cast.mic ? { ...cast.mic, location: 'remote' } : null;
+    if (S.castMic && S.local.mic?.on) media(() => setMic(false)); // the app's mic takes over
+    toast('📱 Your phone screen is live for everyone', 'success');
+    afterLocalChange();
+    reconcilePulls();
+  } else if (cur) {
+    delete S.local.screen;
+    S.castMic = null;
+    toast('Phone screen sharing stopped', 'info');
+    afterLocalChange();
+    reconcilePulls();
+  }
+}
+
+function castModal() {
+  const fallback = new URL('cast.html', location.href).href;
+  const link = `intent://cast?api=${encodeURIComponent(endpoint())}&token=${encodeURIComponent(S.token)}&room=${encodeURIComponent(S.room)}`
+    + `#Intent;scheme=eem26cast;package=io.eem26.cast;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+  modal({
+    title: 'Share your phone screen',
+    body: h('div', { class: 'lv-form' },
+      h('p', {}, 'Phone browsers can’t share the screen themselves, so this uses the free EEM26 Cast app. It sends your screen and microphone to everyone in the class.'),
+      h('ol', { class: 'lv-steps' },
+        h('li', {}, 'First time only: ', h('a', { href: fallback, target: '_blank', rel: 'noopener' }, 'install EEM26 Cast'), '.'),
+        h('li', {}, 'Tap ', h('b', {}, 'Open EEM26 Cast'), ' below, then ', h('b', {}, 'Start sharing'), '.'),
+        h('li', {}, 'Come back here any time — keep this page open so you can manage chat and attendees.')),
+      h('a', { class: 'lv-btn primary lg', href: link, id: 'cast-open' }, '📱 Open EEM26 Cast')),
+    actions: [{ label: 'Close' }],
+  });
 }
 
 function onMyStage() {
@@ -1166,7 +1218,7 @@ function currentShare() {
 }
 
 function trackFor(id, kind) {
-  if (id === S.identity) return S.local[kind]?.track || null;
+  if (id === S.identity && S.local[kind]?.track) return S.local[kind].track;
   return pulled(id, kind);
 }
 
@@ -1279,7 +1331,9 @@ function renderControls() {
   const center = h('div', { class: 'lv-ctl-group center' });
   const right = h('div', { class: 'lv-ctl-group right' });
 
-  if (can('mic')) {
+  if (IS_HOST && S.castMic) {
+    center.append(ctrl('mic', 'mic', 'Phone mic', { on: () => toast('Your microphone is coming from the EEM26 Cast app. Stop presenting to switch back.', 'info') }));
+  } else if (can('mic')) {
     const on = !!l.mic?.on;
     center.append(ctrl('mic', on ? 'mic' : 'micOff', on ? 'Mute' : 'Unmute', { off: !on, on: toggleMic }));
   }

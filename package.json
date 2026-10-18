@@ -5,7 +5,7 @@
   "description": "Live class / webinar platform on Cloudflare Realtime SFU (static frontend + one Supabase Edge Function)",
   "scripts": {
     "dev": "node dev/server.mjs",
-    "test:e2e": "node dev/e2e.mjs",
+    "test:e2e": "node dev/e2e.mjs && node dev/cast-e2e.mjs",
     "test:load": "node dev/load.mjs 200",
     "fakesfu": "cd dev/fakesfu && go run .",
     "build:vendor": "esbuild dev/vendor-entry.mjs --banner:js=\"/* Bundled from partytracks@0.0.56 (ISC, github.com/cloudflare/partykit), rxjs@7.8.2 (Apache-2.0), tiny-invariant (MIT). Rebuild: npm run build:vendor */\" --bundle --format=esm --minify --target=es2020 --legal-comments=eof --outfile=js/vendor/partytracks.mjs"
