@@ -927,7 +927,18 @@ function toggleScreen() {
     if (S.local.screen) { stopScreen(); return; }
     if (!can('screen')) return;
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      toast('Screen sharing isn’t supported on this device. Use Chrome, Edge or Firefox on a computer.', 'error', 6000);
+      // Phone browsers (Android and iPhone) don't let web pages capture the screen.
+      if (!$('.lv-modal-wrap')) {
+        modal({
+          title: 'Screen sharing needs a computer',
+          body: h('div', { class: 'lv-form' },
+            h('p', {}, 'Phone browsers (Chrome, Safari, Firefox on Android and iPhone) don’t allow websites to share the phone’s screen.'),
+            h('p', {}, IS_HOST
+              ? 'To share your screen, open the presenter studio on a laptop or desktop in Chrome or Edge. You can still talk and use your camera from this phone.'
+              : 'Join from a laptop or desktop in Chrome or Edge to share your screen. You can still speak and use your camera from this phone.')),
+          actions: [{ label: 'OK', kind: 'primary' }],
+        });
+      }
       return;
     }
     const motion = S.shareMotion;
