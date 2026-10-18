@@ -14,16 +14,17 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import org.webrtc.DefaultVideoDecoderFactory
-import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.ResolutionAdjustment
 import org.webrtc.RtpParameters
 import org.webrtc.RtpTransceiver
 import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import org.webrtc.SimulcastAlignedVideoEncoderFactory
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.audio.JavaAudioDeviceModule
 import java.util.UUID
@@ -127,7 +128,9 @@ class CastService : Service() {
             .createAudioDeviceModule()
         val factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(adm)
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
+            .setVideoEncoderFactory(
+                // One encoder per layer, sized so phone hardware encoders accept it.
+                SimulcastAlignedVideoEncoderFactory(egl.eglBaseContext, true, true, ResolutionAdjustment.MULTIPLE_OF_16))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
             .createPeerConnectionFactory()
             .also { this.factory = it }
@@ -164,12 +167,19 @@ class CastService : Service() {
         }) ?: throw IllegalStateException("Could not create connection")
         this.pc = pc
 
-        val encoding = RtpParameters.Encoding(null, true, null).apply {
-            maxBitrateBps = 1_500_000
+        // Two layers, like the browser share: "f" (full) for computers and good
+        // connections, "h" (half size, a quarter of the data) for phones and
+        // weak connections. Each viewer only receives the one it needs.
+        val full = RtpParameters.Encoding("f", true, 1.0).apply {
+            maxBitrateBps = 1_200_000
             maxFramerate = 15
         }
+        val half = RtpParameters.Encoding("h", true, 2.0).apply {
+            maxBitrateBps = 300_000
+            maxFramerate = 10
+        }
         val videoTx = pc.addTransceiver(videoTrack, RtpTransceiver.RtpTransceiverInit(
-            RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("cast"), listOf(encoding)))
+            RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("cast"), listOf(full, half)))
         // Screens are mostly text: keep them sharp and drop frames instead.
         videoTx.sender.parameters.let { p ->
             p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION

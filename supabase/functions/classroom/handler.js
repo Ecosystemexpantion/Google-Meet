@@ -254,7 +254,8 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
     const sessionId = clean(m.sessionId, 128);
     const trackName = clean(m.trackName, 80);
     if (!/^[A-Za-z0-9_-]{8,128}$/.test(sessionId) || !/^[A-Za-z0-9_.:-]{1,80}$/.test(trackName)) return null;
-    return { sessionId, trackName };
+    // simulcast: the app also sends a lighter layer (rid "h") for weak connections
+    return m.simulcast === true ? { sessionId, trackName, simulcast: true } : { sessionId, trackName };
   }
 
   // The phone share (EEM26 Cast) as attendees should see it, if it's live.

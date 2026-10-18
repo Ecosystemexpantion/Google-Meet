@@ -1,0 +1,72 @@
+name: Live class test (200 viewers)
+
+# Fills a real, live class with test viewers on GitHub's servers, plus one
+# real Chrome "phone" viewer that measures what people would see.
+# Start the class and share your screen first, then press "Run workflow".
+# Viewers show up as "Test viewer N" and leave by themselves at the end.
+on:
+  workflow_dispatch:
+    inputs:
+      room:
+        description: Class room name (as in the join link)
+        required: true
+      viewers:
+        description: Number of test viewers
+        default: "200"
+      minutes:
+        description: How long they stay
+        default: "5"
+      chat:
+        description: Percent of viewers that send one chat message
+        default: "5"
+
+env:
+  API: https://leqizarzgfpiriknpnxw.supabase.co/functions/v1/classroom
+  SITE: https://ecosystemexpantion.github.io/Google-Meet/
+
+jobs:
+  viewers:
+    # Four machines, like viewers spread over different networks.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: dev/fakesfu/go.mod
+          cache-dependency-path: dev/fakesfu/go.sum
+      - run: go build -o loadbot ./loadbot
+        working-directory: dev/fakesfu
+      - name: Test viewers join and watch
+        env:
+          ROOM: ${{ inputs.room }}
+          VIEWERS: ${{ inputs.viewers }}
+          MINUTES: ${{ inputs.minutes }}
+          CHAT: ${{ inputs.chat }}
+          PART: ${{ matrix.part }}
+        run: |
+          n=$(( (VIEWERS + 3 - PART) / 4 ))
+          ./dev/fakesfu/loadbot -api "$API" -room "$ROOM" -n "$n" -rate 4 -d "${MINUTES}m" -chat "$CHAT" -name "Test viewer $PART-" 2>&1 | tee bots.log
+          echo "**Part $PART:** $(grep FINAL bots.log | sed 's/FINAL //') of $n" >> "$GITHUB_STEP_SUMMARY"
+
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-save --no-package-lock playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Real phone viewer measures the class
+        env:
+          ROOM: ${{ inputs.room }}
+          # join once most test viewers are in, then watch until they leave
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          sleep 45
+          MINUTES=$(awk "BEGIN{print $MINUTES - 1}") node dev/real-probe.mjs
