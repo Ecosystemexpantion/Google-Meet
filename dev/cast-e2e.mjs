@@ -47,7 +47,7 @@ const q = new URLSearchParams(link.slice('intent://cast?'.length, link.indexOf('
 const app = await page();
 await app.goto(`${BASE}/cast.html`);
 await check('install page offers the APK', async () => { if (!(await app.getAttribute('a[download]', 'href')).endsWith('app/eem26-live.apk')) throw new Error('no apk link'); });
-await app.evaluate(async ({ api, token }) => {
+const appShare = () => app.evaluate(async ({ api, token }) => {
   const post = async (path, body, headers = {}) => {
     const r = await fetch(`${api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
     return r.json();
@@ -78,6 +78,7 @@ await app.evaluate(async ({ api, token }) => {
   const t = setInterval(beat, 2000);
   await beat();
 }, { api: `${BASE}/api/classroom`, token: q.get('token') });
+await appShare();
 
 const playing = (p) => p.waitForFunction(() => { const v = document.querySelector('#lv-main video'); return v && v.videoWidth > 0 && !v.paused; }, null, { timeout: 20000 });
 await check('presenter sees a preview of the phone share', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }).then(() => host.waitForFunction(() => document.querySelector('.lv-presenting video')?.videoWidth > 0, null, { timeout: 15000 })));
@@ -137,11 +138,28 @@ await check('attendees reconnect to the presenter (banner clears, chat back)', a
 await check('presenter sees the phone share again', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }));
 
 // ── Presenter mutes while the app provides the microphone ──
-const hostMicMuted = () => [...window.__lv.pulls.values()].find((p) => p.owner === 'host' && p.kind === 'mic')?.audio?.muted;
+const hostMicOn = () => window.__lv.view.host.micOn;
+// audio packets the attendee has received from the presenter's microphone
+const micPackets = () => {
+  const p = [...window.__lv.pulls.values()].find((x) => x.owner === 'host' && x.kind === 'mic');
+  return p?.handle.pc?.getStats(p.track).then((r) => { let n = 0; r.forEach((s) => { if (s.type === 'inbound-rtp') n += s.packetsReceived || 0; }); return n; }) ?? 0;
+};
+const voiceFlows = async (p) => {
+  const a = await p.evaluate(`(${micPackets})()`);
+  await p.waitForTimeout(2500);
+  const b = await p.evaluate(`(${micPackets})()`);
+  if (!(b > a)) throw new Error(`no voice packets (${a} → ${b})`);
+};
+await check('attendee receives the presenter voice', () => voiceFlows(guest));
 await host.click('#ctl-mic');
-await check('presenter can mute the app microphone; attendees go silent', () => guest.waitForFunction((f) => eval(f)() === true, hostMicMuted.toString(), { timeout: 10000 }));
+await check('presenter can mute the app microphone', () => guest.waitForFunction(`(${hostMicOn})() === false`, null, { timeout: 10000 }));
+await host.waitForTimeout(3000);
 await host.click('#ctl-mic');
-await check('…and unmute it again', () => guest.waitForFunction((f) => eval(f)() === false, hostMicMuted.toString(), { timeout: 10000 }));
+await check('…and after unmuting, the voice reaches attendees again', async () => {
+  await guest.waitForFunction(`(${hostMicOn})() === true`, null, { timeout: 10000 });
+  await voiceFlows(guest);
+  if (await guest.evaluate(() => [...window.__lv.pulls.values()].find((x) => x.owner === 'host' && x.kind === 'mic')?.audio?.paused)) throw new Error('player paused');
+});
 
 // ── An attendee on a phone, allowed to share, shares through the EEM26 Live app ──
 const bo = await page({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36 EEM26App/2' });
@@ -184,6 +202,12 @@ await host.click('#ctl-people'); // close the people panel
 await host.click('.lv-presenting button:has-text("Stop presenting")');
 await check('"Stop presenting" stops the app', () => app.waitForFunction(() => window.castStopped === true, null, { timeout: 15000 }));
 await check('attendee stage returns to the presenter', () => guest.waitForFunction(() => !document.querySelector('#lv-main video'), null, { timeout: 15000 }));
+
+// ── Presenter shares again: everyone sees it the first time ──
+await app.evaluate(() => { window.castStopped = false; });
+await appShare();
+await check('a second share shows for attendees straight away', () => Promise.all([guest, late].map((p) => p.waitForFunction(() => /is presenting/.test(document.querySelector('#lv-stage-label').textContent) && document.querySelector('#lv-main video')?.videoWidth > 0, null, { timeout: 20000 }))));
+await check('…and the voice still reaches attendees', () => voiceFlows(guest));
 
 await browser.close();
 console.log(failures ? `\n${failures} check(s) failed` : '\nAll cast checks passed');
