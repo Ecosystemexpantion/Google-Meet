@@ -32,7 +32,7 @@ var (
 	chatPct = flag.Int("chat", 10, "percent of bots that send one chat message")
 
 	joined, withState, withVideo, chats, failed int64
-	videoBytes                                   int64
+	videoBytes                                  int64
 )
 
 type meta struct {
@@ -152,19 +152,26 @@ func bot(i int, wg *sync.WaitGroup) {
 		atomic.AddInt64(&failed, 1)
 		return
 	}
-	var dcs struct {
+	type dcList struct {
 		DataChannels []struct {
 			ID uint16 `json:"id"`
 		} `json:"dataChannels"`
 	}
-	if err := post("/sfu/sessions/"+sid+"/datachannels/new", sig, map[string]any{"dataChannels": []map[string]any{
+	var dcUp, dcRoom dcList
+	err = post("/sfu/sessions/"+sid+"/datachannels/new", sig, map[string]any{"dataChannels": []map[string]any{
 		{"location": "local", "dataChannelName": "up", "ordered": true},
-		{"location": "remote", "dataChannelName": "room", "sessionId": j.Room.HostDataSession, "ordered": true},
-	}}, &dcs); err != nil || len(dcs.DataChannels) != 2 {
+	}}, &dcUp)
+	if err == nil {
+		err = post("/sfu/sessions/"+sid+"/datachannels/new", sig, map[string]any{"dataChannels": []map[string]any{
+			{"location": "remote", "dataChannelName": "room", "sessionId": j.Room.HostDataSession, "ordered": true},
+		}}, &dcRoom)
+	}
+	if err != nil || len(dcUp.DataChannels) != 1 || len(dcRoom.DataChannels) != 1 {
 		log.Printf("bot %d channels: %v", i, err)
 		atomic.AddInt64(&failed, 1)
 		return
 	}
+	dcs := dcList{DataChannels: append(dcUp.DataChannels, dcRoom.DataChannels...)}
 	t := true
 	up, _ := pc.CreateDataChannel("up", &webrtc.DataChannelInit{Negotiated: &t, ID: &dcs.DataChannels[0].ID, Ordered: &t})
 	roomCh, _ := pc.CreateDataChannel("room", &webrtc.DataChannelInit{Negotiated: &t, ID: &dcs.DataChannels[1].ID, Ordered: &t})
