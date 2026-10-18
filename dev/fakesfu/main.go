@@ -77,13 +77,13 @@ type subTrack struct {
 	rid    string
 	pub    *pubTrack
 	// sequence/timestamp rewriting so layer switches stay monotonic
-	mu                      sync.Mutex
-	lastSeq                 uint16
-	lastTS                  uint32
-	seqOff                  uint16
-	tsOff                   uint32
-	curLayer                string
-	started                 bool
+	mu       sync.Mutex
+	lastSeq  uint16
+	lastTS   uint32
+	seqOff   uint16
+	tsOff    uint32
+	curLayer string
+	started  bool
 }
 
 type pubChan struct {
@@ -417,6 +417,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func tracksNew(w http.ResponseWriter, s *session, offer *sd, tracks []trackReq) error {
+	locals := 0
+	for _, t := range tracks {
+		if t.Location == "local" {
+			locals++
+		}
+	}
+	if locals > 0 && locals < len(tracks) {
+		errJSON(w, 400, "Pushing and Pulling in the same request is currently unsupported")
+		return nil
+	}
 	if offer != nil && offer.Type == "offer" { // push
 		for _, t := range tracks {
 			s.midName[t.Mid] = t.TrackName
@@ -579,6 +589,17 @@ func tracksClose(w http.ResponseWriter, s *session, offer *sd, tracks []trackReq
 }
 
 func dcNew(w http.ResponseWriter, s *session, reqs []dcReq) error {
+	// Like the real service: one request may publish or subscribe, not both.
+	locals := 0
+	for _, d := range reqs {
+		if d.Location == "local" {
+			locals++
+		}
+	}
+	if locals > 0 && locals < len(reqs) {
+		errJSON(w, 400, "Pushing and Pulling in the same request is currently unsupported")
+		return nil
+	}
 	out := []map[string]any{}
 	for _, d := range reqs {
 		id := s.nextDC

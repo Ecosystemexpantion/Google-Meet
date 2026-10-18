@@ -566,10 +566,9 @@ async function startGuest(res, room) {
   S.data = new DataLink();
   S.data.addEventListener('state', (e) => onLinkState(e.detail));
   const sessionId = await S.data.open(await iceServers());
-  const [up, roomCh] = await S.data.add([
-    { location: 'local', dataChannelName: 'up' },
-    { location: 'remote', dataChannelName: 'room', sessionId: S.hostDataSession },
-  ]);
+  // Cloudflare doesn't allow publishing and subscribing in one request.
+  const [up] = await S.data.add([{ location: 'local', dataChannelName: 'up' }]);
+  const [roomCh] = await S.data.add([{ location: 'remote', dataChannelName: 'room', sessionId: S.hostDataSession }]);
   if (!up || !roomCh) throw new Error('Could not connect to the class. Please try again.');
   S.upCh = up;
   bindRoomChannel(roomCh);
