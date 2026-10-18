@@ -1,0 +1,7 @@
+# Used by the Supabase GitHub integration / CLI when deploying from this repo.
+project_id = "leqizarzgfpiriknpnxw"
+
+[functions.classroom]
+# The function authenticates callers itself (host password / signed tokens /
+# per-session signatures). Gateway JWT checks would also reject CORS preflights.
+verify_jwt = false
