@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         val api = data.getQueryParameter("api")
         val token = data.getQueryParameter("token")
         if (api.isNullOrEmpty() || token.isNullOrEmpty() || !api.startsWith("https://")) {
-            Toast.makeText(this, "That link is incomplete. Open EEM26 Cast from the presenter studio.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "That link is incomplete. Open EEM26 Live from the presenter studio.", Toast.LENGTH_LONG).show()
             return
         }
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -96,7 +96,7 @@ class MainActivity : Activity() {
         room.text = if (linked()) "Class: ${roomName.ifEmpty { "connected" }}" else "Not connected to a class yet"
         status.text = when {
             live -> CastService.status
-            !linked() -> "In the presenter studio, tap Share screen → Open EEM26 Cast."
+            !linked() -> "In the presenter studio, tap Share screen → Open EEM26 Live."
             else -> CastService.status.takeIf { it != "Ready" } ?: "Ready to share your screen."
         }
         startBtn.isEnabled = linked() && !live
@@ -193,7 +193,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
         }
         col.addView(chip)
-        col.addView(text("EEM26 Cast", 28f, Color.WHITE, bold = true))
+        col.addView(text("EEM26 Live", 28f, Color.WHITE, bold = true))
         col.addView(text("Share your phone screen with everyone in your live class.", 16f, Color.parseColor("#9AA0AD")))
         room = text("", 15f, Color.parseColor("#C9CCD4"))
         col.addView(room)

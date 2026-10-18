@@ -19,6 +19,8 @@ const CHAT_EMOJI = ['😀', '😂', '😍', '🙌', '👏', '👍', '🙏', '�
 const MAX_CHAT = 500;
 const DEFAULT_SETTINGS = { chat: 'everyone', reactions: true, hands: true, locked: false, showPeople: false, banner: '', title: '' };
 const ONLINE_MS = 35000;
+// Present when running inside the EEM26 Live Android app (see android/).
+const NATIVE = window.EEM26App || null;
 const SOURCES = ['screen', 'mic', 'camera'];
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -259,6 +261,7 @@ function shell() {
       h('div', { class: 'lv-top-mid' },
         h('span', { class: 'lv-live', id: 'lv-live' }, h('span', { class: 'lv-dot' }), 'LIVE', h('span', { id: 'lv-timer', class: 'lv-timer' }, '00:00'))),
       h('div', { class: 'lv-top-right' },
+        h('span', { class: 'lv-pill lv-status hidden', id: 'lv-status', role: 'status' }),
         h('span', { class: 'lv-pill hidden', id: 'lv-locked', title: 'Room is locked', html: `${icon('lock', 14)} Locked` }),
         IS_HOST ? h('button', { class: 'lv-pill lv-pill-btn', id: 'lv-hands-pill', title: 'Raised hands', onclick: () => openPanel('people'), html: `${icon('hand', 14)} <b id="lv-hands-count">0</b>` }) : null,
         h('span', { class: 'lv-pill', title: 'People in the class', html: `${icon('eye', 14)} <b id="lv-count">0</b>` }),
@@ -642,13 +645,12 @@ async function watchHost() {
 }
 
 // The presenter's class page went quiet (on a phone, Android pauses Chrome
-// while they show other apps). If they're sharing with EEM26 Cast, keep
+// while they show other apps). If they're sharing with EEM26 Live, keep
 // showing that share; chat waits until they're back.
 function setHostAway(kind) {
   S.hostAway = kind;
-  const who = S.view?.host?.name || CFG.PRESENTER_NAME || 'The presenter';
-  if (kind === 'phone') showReconnect(true, `${who} is sharing from their phone — chat resumes when they’re back on the class page.`, 'info');
-  else if (kind === 'dropped' && S.lastStateAt) showReconnect(true, 'The presenter’s connection dropped — waiting for them…');
+  if (kind === 'phone') showReconnect(true, 'Chat paused', 'info');
+  else if (kind === 'dropped' && S.lastStateAt) showReconnect(true, 'Presenter reconnecting');
   else showReconnect(false);
   renderChatComposer();
 }
@@ -679,12 +681,13 @@ function onLinkState(state) {
   }
 }
 
-function showReconnect(on, text = 'Reconnecting…', kind = 'warn') {
-  let el = $('#lv-reconnect');
-  if (on && !el) $('#lv-app').append(el = h('div', { class: 'lv-reconnect', id: 'lv-reconnect' }, h('span', { class: 'lv-spin' }), h('span', {}, text)));
-  else if (on) el.lastChild.textContent = text;
-  if (on) el.classList.toggle('info', kind === 'info');
-  if (!on && el) el.remove();
+// Connection notices live in a small chip in the top bar, never over the stage.
+function showReconnect(on, text = 'Reconnecting', kind = 'warn') {
+  const el = $('#lv-status');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+  el.classList.toggle('info', kind === 'info');
+  if (on) el.replaceChildren(h('span', { class: 'lv-spin sm' }), text);
 }
 
 // ── Incoming: presenter → attendees ────────────────────────
@@ -723,7 +726,7 @@ function onRoom(msg) {
       break;
     case 'poll':
       if (!msg.poll) return;
-      if (!S.poll || S.poll.id !== msg.poll.id) toast('📊 New poll from the presenter', 'info');
+      if (!S.poll || S.poll.id !== msg.poll.id) toast('New poll from the presenter', 'info');
       S.poll = msg.poll;
       renderPolls(); renderControls();
       if (S.poll.open && !S.myVotes.has(S.poll.id) && window.innerWidth > 900) openPanel('polls');
@@ -791,7 +794,7 @@ function onUp(p, msg) {
       const up = S.settings.hands && !!msg.up;
       if (!!p.hand === up) return;
       p.hand = up ? Date.now() : 0;
-      if (up) { toast(`✋ ${p.name} raised their hand`, 'info', 3500); beep(); }
+      if (up) { toast(`${p.name} raised their hand`, 'info', 3500); beep(); }
       stateChanged();
       break;
     }
@@ -951,10 +954,27 @@ function toggleMic() {
   return media(async () => setMic(!S.local.mic?.on));
 }
 
+// Free the microphone device for another capturer (the EEM26 Live app)
+// without unpublishing, so the connection isn't renegotiated.
+function releaseMic() {
+  const cur = S.local.mic;
+  if (!cur || cur.released) return;
+  cur.track.stop();
+  cur.on = false;
+  cur.released = true;
+  afterLocalChange();
+}
+
 async function setMic(on) {
   if (on && !can('mic')) return;
   const cur = S.local.mic;
-  if (on && !cur) {
+  if (on && cur?.released) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: S.micId ? { exact: S.micId } : undefined } });
+    cur.track = stream.getAudioTracks()[0];
+    cur.handle.replace(cur.track);
+    cur.released = false;
+    cur.on = true;
+  } else if (on && !cur) {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: S.micId ? { exact: S.micId } : undefined } });
     pushLocal('mic', stream.getAudioTracks()[0]).on = true;
   } else if (cur) {
@@ -979,6 +999,10 @@ function toggleScreen() {
     if (!can('screen')) return;
     if (!navigator.mediaDevices?.getDisplayMedia) {
       // Phone browsers (Android and iPhone) don't let web pages capture the screen.
+      if (IS_HOST && NATIVE) { // inside the EEM26 Live app: share natively
+        NATIVE.startShare(endpoint(), S.token, S.room);
+        return;
+      }
       if (IS_HOST && /Android/i.test(navigator.userAgent)) {
         if (!$('.lv-modal-wrap')) castModal();
         return;
@@ -1028,6 +1052,7 @@ function toggleScreen() {
 function stopScreen() {
   if (S.local.screen?.cast) {
     api('cast-stop', { token: S.token }).catch(() => {});
+    try { NATIVE?.stopShare(); } catch { /* app too old */ }
     S.castMic = null;
     toast('Stopping your phone share…', 'info');
   }
@@ -1035,7 +1060,7 @@ function stopScreen() {
   stopLocal('screen');
 }
 
-// EEM26 Cast (Android app) publishes the phone screen + mic straight to the
+// EEM26 Live (Android app) publishes the phone screen + mic straight to the
 // SFU and reports the tracks through the API; adopt them as the presenter's.
 function applyCast(cast) {
   const live = cast && !cast.stop && cast.age < 30000 && cast.screen;
@@ -1046,8 +1071,8 @@ function applyCast(cast) {
     if (S.local.screen && !cur) stopScreen();
     S.local.screen = { cast: true, key, meta: { ...cast.screen, location: 'remote', noRid: true }, at: Date.now() };
     S.castMic = cast.mic ? { ...cast.mic, location: 'remote' } : null;
-    if (S.castMic && S.local.mic?.on) media(() => setMic(false)); // the app's mic takes over
-    toast('📱 Your phone screen is live for everyone', 'success');
+    if (S.castMic && S.local.mic) media(async () => releaseMic()); // the app's mic takes over
+    toast('Your phone screen is live for everyone', 'success');
     afterLocalChange();
     reconcilePulls();
   } else if (cur) {
@@ -1066,12 +1091,12 @@ function castModal() {
   modal({
     title: 'Share your phone screen',
     body: h('div', { class: 'lv-form' },
-      h('p', {}, 'Phone browsers can’t share the screen themselves, so this uses the free EEM26 Cast app. It sends your screen and microphone to everyone in the class.'),
+      h('p', {}, 'Phone browsers can’t share the screen themselves, so this uses the free EEM26 Live app. It sends your screen and microphone to everyone in the class.'),
       h('ol', { class: 'lv-steps' },
-        h('li', {}, 'First time only: ', h('a', { href: fallback, target: '_blank', rel: 'noopener' }, 'install EEM26 Cast'), '.'),
-        h('li', {}, 'Tap ', h('b', {}, 'Open EEM26 Cast'), ' below, then ', h('b', {}, 'Start sharing'), '.'),
+        h('li', {}, 'First time only: ', h('a', { href: fallback, target: '_blank', rel: 'noopener' }, 'install EEM26 Live'), '.'),
+        h('li', {}, 'Tap ', h('b', {}, 'Open EEM26 Live'), ' below, then ', h('b', {}, 'Start sharing'), '.'),
         h('li', {}, 'Come back here any time — keep this page open so you can manage chat and attendees.')),
-      h('a', { class: 'lv-btn primary lg', href: link, id: 'cast-open' }, '📱 Open EEM26 Cast')),
+      h('a', { class: 'lv-btn primary lg', href: link, id: 'cast-open', html: `${icon('screen', 20)} Open EEM26 Live` })),
     actions: [{ label: 'Close' }],
   });
 }
@@ -1085,7 +1110,7 @@ function onMyStage() {
   const gained = [...now2].filter((s) => !had.has(s));
   if (gained.length) {
     const words = { screen: 'share your screen', mic: 'speak', camera: 'turn on your camera' };
-    toast(`🎉 The presenter invited you to ${gained.map((g) => words[g]).join(', ')}.`, 'success', 7000);
+    toast(`The presenter invited you to ${gained.map((g) => words[g]).join(', ')}.`, 'success', 7000);
   }
   if (!now2.has('screen') && S.local.screen) media(async () => stopScreen());
   if (!now2.has('mic') && S.local.mic) media(async () => stopLocal('mic'));
@@ -1177,7 +1202,7 @@ function applySettings(before = {}) {
   if (!IS_HOST && before.chat) {
     if (before.chat !== s.chat) toast(s.chat === 'off' ? 'The presenter turned chat off.' : s.chat === 'to-host' ? 'Chat is now private questions to the presenter.' : 'Chat is open to everyone.', 'info');
     if (before.reactions && !s.reactions) toast('Reactions are turned off.', 'info');
-    if (s.banner && s.banner !== before.banner) toast('📌 New announcement from the presenter', 'info');
+    if (s.banner && s.banner !== before.banner) toast('New announcement from the presenter', 'info');
   }
   renderChatComposer();
   renderControls();
@@ -1382,7 +1407,7 @@ function renderControls() {
   const right = h('div', { class: 'lv-ctl-group right' });
 
   if (IS_HOST && S.castMic) {
-    center.append(ctrl('mic', 'mic', 'Phone mic', { on: () => toast('Your microphone is coming from the EEM26 Cast app. Stop presenting to switch back.', 'info') }));
+    center.append(ctrl('mic', 'mic', 'Phone mic', { on: () => toast('Your microphone is coming from the EEM26 Live app. Stop presenting to switch back.', 'info') }));
   } else if (can('mic')) {
     const on = !!l.mic?.on;
     center.append(ctrl('mic', on ? 'mic' : 'micOff', on ? 'Mute' : 'Unmute', { off: !on, on: toggleMic }));
@@ -1397,7 +1422,7 @@ function renderControls() {
   }
   if (!IS_HOST && s.hands) {
     const up = myHandUp();
-    center.append(ctrl('hand', 'hand', up ? 'Lower hand' : 'Raise hand', { active: up, on: () => { sendUp({ t: 'hand', up: !up }); toast(up ? 'Hand lowered' : '✋ Hand raised — the presenter can see it', 'info', 2500); } }));
+    center.append(ctrl('hand', 'hand', up ? 'Lower hand' : 'Raise hand', { active: up, on: () => { sendUp({ t: 'hand', up: !up }); toast(up ? 'Hand lowered' : 'Hand raised — the presenter can see it', 'info', 2500); } }));
   }
   if (s.reactions || IS_HOST) {
     center.append(ctrl('react', 'smile', 'React', { on: (e) => reactionPicker(e.currentTarget), disabled: chatBlocked() }));
@@ -1406,7 +1431,14 @@ function renderControls() {
   center.append(ctrl('chat', 'chat', 'Chat', { active: S.panel === 'chat', on: () => openPanel('chat'), badge: S.unread ? String(Math.min(S.unread, 99)) : null }));
   center.append(ctrl('people', 'users', 'People', { active: S.panel === 'people', on: () => openPanel('people'), badge: IS_HOST && hands ? String(hands) : null }));
   center.append(ctrl('polls', 'poll', 'Polls', { active: S.panel === 'polls', on: () => openPanel('polls'), badge: !IS_HOST && S.poll?.open && !S.myVotes.has(S.poll.id) ? '1' : null }));
-  if (IS_HOST) center.append(ctrl('room', 'sliders', 'Controls', { active: S.panel === 'room', on: () => openPanel('room') }));
+  if (IS_HOST) {
+    const locked = s.chat === 'off';
+    center.append(ctrl('chatlock', 'lock', locked ? 'Unlock chat' : 'Lock chat', {
+      active: locked,
+      on: () => { updateSettings({ chat: locked ? 'everyone' : 'off' }); toast(locked ? 'Chat is open to everyone' : 'Chat is locked', 'info', 2500); },
+    }));
+    center.append(ctrl('room', 'sliders', 'Controls', { active: S.panel === 'room', on: () => openPanel('room') }));
+  }
 
   left.append(h('button', { class: 'lv-icon-btn', title: 'Audio & video settings', 'aria-label': 'Settings', html: icon('settings'), onclick: deviceSettings }));
   right.append(IS_HOST
@@ -1598,7 +1630,7 @@ function buildPeoplePanel() {
   search.addEventListener('input', () => { S.peopleFilter = search.value.toLowerCase(); renderPeople(); });
   $('#panel-people').append(
     h('div', { class: 'lv-people-head' }, search,
-      IS_HOST ? h('button', { class: 'lv-btn sm', title: 'Lower all hands', onclick: lowerAllHands }, 'Lower all ✋') : null),
+      IS_HOST ? h('button', { class: 'lv-btn sm', title: 'Lower all hands', onclick: lowerAllHands }, 'Lower all hands') : null),
     h('div', { class: 'lv-people', id: 'lv-people' }));
 }
 
@@ -1649,7 +1681,7 @@ function renderPeople() {
 
 function personRow(p) {
   const badges = [];
-  if (p.hand) badges.push(h('span', { class: 'lv-hand-badge', title: 'Hand raised' }, '✋'));
+  if (p.hand) badges.push(h('span', { class: 'lv-hand-badge', title: 'Hand raised', html: icon('hand', 16) }));
   if (p.sharing) badges.push(h('span', { class: 'lv-state', title: 'Sharing screen', html: icon('screen', 14) }));
   if (p.camOn) badges.push(h('span', { class: 'lv-state', title: 'Camera on', html: icon('cam', 14) }));
   if (p.host || p.stage.includes('mic')) badges.push(h('span', { class: `lv-state${p.micOn ? ' on' : ''}`, title: p.micOn ? 'Mic on' : 'Mic off', html: icon(p.micOn ? 'mic' : 'micOff', 14) }));
@@ -1893,6 +1925,7 @@ function syncRoomPanel() {
 
 function exportChat() {
   const lines = S.messages.map((m) => `[${new Date(m.ts).toLocaleString()}] ${m.name}${m.priv ? ' (private)' : ''}: ${m.text}`);
+  if (NATIVE?.saveText) { NATIVE.saveText(`chat-${S.room || 'class'}.txt`, lines.join('\n')); return; }
   const a = h('a', { href: URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' })), download: `chat-${S.room || 'class'}.txt` });
   document.body.append(a); a.click(); a.remove();
 }

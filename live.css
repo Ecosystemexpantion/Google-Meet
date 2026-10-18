@@ -491,4 +491,9 @@ select.lv-input { appearance: auto; }
 .lv-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: #d4d7de; }
 .lv-steps a { font-weight: 600; }
 a.lv-btn.lg { text-decoration: none; }
-.lv-reconnect.info { background: var(--brand); color: #fff; max-width: calc(100% - 32px); text-align: center; }
+
+/* Status chip (connection notices) — top bar only, never over the stage */
+.lv-status { color: #fcd34d; border-color: rgba(245, 165, 36, .45); background: rgba(245, 165, 36, .12); }
+.lv-status.info { color: #ddd6fe; border-color: rgba(124, 92, 224, .5); background: var(--brand-soft); }
+.lv-spin.sm { width: 11px; height: 11px; border-width: 2px; }
+.lv-hand-badge { color: var(--amber); display: inline-flex; }

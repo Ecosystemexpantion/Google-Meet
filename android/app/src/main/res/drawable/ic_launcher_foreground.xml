@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- display -->
+    <path
+        android:pathData="M36,35h36a5,5 0,0 1,5 5v24a5,5 0,0 1,-5 5h-36a5,5 0,0 1,-5 -5v-24a5,5 0,0 1,5 -5z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.6"
+        android:fillColor="#00000000" />
+    <!-- stand -->
+    <path
+        android:pathData="M45,76h18"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,69v7"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.6" />
+    <!-- live dot -->
+    <path
+        android:pathData="M54,52m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0"
+        android:fillColor="#FFFFFFFF" />
+    <!-- broadcast arcs -->
+    <path
+        android:pathData="M47.6,45.6a9,9 0,0 0,0 12.8M60.4,45.6a9,9 0,0 1,0 12.8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M42.7,40.7a16,16 0,0 0,0 22.6M65.3,40.7a16,16 0,0 1,0 22.6"
+        android:strokeColor="#B3FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

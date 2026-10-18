@@ -35,7 +35,8 @@ jobs:
         run: |
           gradle -p android assembleRelease --no-daemon --stacktrace
           mkdir -p app
-          cp android/app/build/outputs/apk/release/app-release.apk app/eem26-cast.apk
+          cp android/app/build/outputs/apk/release/app-release.apk app/eem26-live.apk
+          cp app/eem26-live.apk app/eem26-cast.apk  # the old link keeps working
 
       # Version the site's own JS/CSS URLs so phones never run a stale copy
       # (GitHub Pages lets browsers cache files for 10 minutes).
