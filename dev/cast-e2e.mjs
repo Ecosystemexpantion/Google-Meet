@@ -46,7 +46,7 @@ const q = new URLSearchParams(link.slice('intent://cast?'.length, link.indexOf('
 // ── the "app" ──
 const app = await page();
 await app.goto(`${BASE}/cast.html`);
-await check('install page offers the APK', async () => { if (!(await app.getAttribute('a[download]', 'href')).endsWith('app/eem26-cast.apk')) throw new Error('no apk link'); });
+await check('install page offers the APK', async () => { if (!(await app.getAttribute('a[download]', 'href')).endsWith('app/eem26-live.apk')) throw new Error('no apk link'); });
 await app.evaluate(async ({ api, token }) => {
   const post = async (path, body, headers = {}) => {
     const r = await fetch(`${api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
@@ -89,7 +89,9 @@ await host.screenshot({ path: new URL('./screenshots/11-phone-presenting.png', i
 // ── Presenter switches to another app: Android pauses/closes the Chrome tab ──
 await host.goto(`${BASE}/cast.html`); // leave the studio (same tab keeps its session)
 await check('attendee keeps seeing the phone screen while the presenter page is away', async () => {
-  await guest.waitForSelector('#lv-reconnect.info:has-text("sharing from their phone")', { timeout: 30000 });
+  await guest.waitForSelector('#lv-status.info:not(.hidden):has-text("Chat paused")', { timeout: 30000 });
+  // nothing may cover the stage
+  if (await guest.$('.lv-reconnect')) throw new Error('banner over the stage');
   await playing(guest);
 });
 await check('chat pauses instead of losing messages', () => guest.waitForSelector('#lv-chat-input[disabled]', { timeout: 5000 }));
@@ -102,7 +104,7 @@ await check('someone joining meanwhile still sees the phone screen', () => playi
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
 await check('presenter studio rejoins automatically', () => host.waitForSelector('[data-state=live]', { timeout: 20000 }));
 await check('attendees reconnect to the presenter (banner clears, chat back)', async () => {
-  await guest.waitForSelector('#lv-reconnect', { state: 'detached', timeout: 45000 });
+  await guest.waitForSelector('#lv-status.hidden', { state: 'attached', timeout: 45000 });
   await guest.waitForSelector('#lv-chat-input:not([disabled])', { timeout: 5000 });
 });
 await check('presenter sees the phone share again', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }));

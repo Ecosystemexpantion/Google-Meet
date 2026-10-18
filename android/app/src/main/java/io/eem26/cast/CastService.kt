@@ -103,7 +103,7 @@ class CastService : Service() {
         val api = intent.getStringExtra(EXTRA_API) ?: ""
         val token = intent.getStringExtra(EXTRA_TOKEN) ?: ""
         if (resultData == null || api.isEmpty() || token.isEmpty()) {
-            stopCast("Open EEM26 Cast from the presenter studio and try again.")
+            stopCast("Start sharing again from the presenter studio.")
             return
         }
         worker = Thread {
@@ -251,7 +251,12 @@ class CastService : Service() {
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val stop = PendingIntent.getService(this, 1, Intent(this, CastService::class.java).setAction(ACTION_STOP), flags)
-        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), flags)
+        // Same as tapping the app icon: brings the class (studio) back to the front.
+        val launch = Intent(this, HomeActivity::class.java)
+            .setAction(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        val open = PendingIntent.getActivity(this, 2, launch, flags)
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
         else @Suppress("DEPRECATION") Notification.Builder(this)
         return b.setSmallIcon(android.R.drawable.presence_video_online)
