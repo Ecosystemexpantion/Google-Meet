@@ -5,33 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>EEM26 Live · Android app</title>
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="theme-color" content="#111214" />
-  <link rel="stylesheet" href="live.css?v=__BUILD__" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
+  <meta name="theme-color" content="#05060b" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="glass.css?v=__BUILD__" />
+  <link rel="icon" href="app/mark.svg" type="image/svg+xml" />
   <style>
-    body { overflow: auto; }
-    .lv-overlay { position: static; min-height: 100dvh; }
-    .lv-card ol { padding-left: 20px; display: flex; flex-direction: column; gap: 10px; color: #d4d7de; }
-    .lv-card code { background: var(--bg-4); padding: 1px 6px; border-radius: 4px; }
+    .wrap { min-height: calc(100dvh - 90px); display: grid; place-items: center; padding: 32px 0 48px; }
+    .card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 20px; }
+    .card h1 { font-size: clamp(30px, 5vw, 40px); }
+    ol { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 12px; }
+    ol li { counter-increment: s; display: flex; gap: 14px; color: var(--text-2); font-size: 14.5px; }
+    ol li::before { content: counter(s); flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background: rgba(139,108,255,.25); border: 1px solid rgba(139,108,255,.5); }
+    ol b { color: var(--text); }
+    .fine { font-size: 12.5px; color: var(--text-3); }
   </style>
 </head>
 <body>
-  <div class="lv-overlay">
-    <div class="lv-card">
-      <img src="app/icon.svg" alt="" width="72" height="72" style="border-radius:18px" />
-      <h1>EEM26 Live for Android</h1>
-      <p class="muted">Run your whole class from your phone: the presenter studio, built-in screen sharing, chat, polls and every host control in one app. Attendees can join from it too.</p>
-      <a class="lv-btn primary lg" href="app/eem26-live.apk" download>Download EEM26 Live (Android)</a>
+  <div class="aurora"><div class="stars"></div><div class="grain"></div></div>
+  <header class="topbar glass">
+    <a class="brand" href="index.html"><img src="app/mark.svg" alt="" /><span>EEM26 <small>Android app</small></span></a>
+  </header>
+  <main class="shell wrap">
+    <section class="card glass reveal" style="padding:clamp(24px,5vw,40px)">
+      <img src="app/icon.svg" alt="" width="72" height="72" style="border-radius:20px;box-shadow:0 14px 40px -10px rgba(110,90,255,.7)" />
+      <div><div class="eyebrow">For presenters</div><h1 class="display" style="margin-top:8px">EEM26 Live for Android</h1></div>
+      <p class="muted">Run your whole class from your phone: the presenter studio, built-in screen sharing, chat, polls and every host control in one app. It updates itself — you only download it once.</p>
+      <a class="btn primary lg block" href="app/eem26-live.apk" download>Download EEM26 Live</a>
       <ol>
-        <li>Tap the download button above, then open the downloaded file.</li>
-        <li>If Android asks, allow <b>Install unknown apps</b> for your browser and tap <b>Install</b>. (Already have EEM26 Cast? This replaces it.)</li>
-        <li>Open <b>EEM26 Live</b> → <b>Start teaching</b>, sign in and tap <b>Start the class</b>.</li>
-        <li>Tap <b>Share screen</b>. Android asks once to start recording or casting: choose <b>Entire screen</b> and tap <b>Start</b>. Then switch to any app — the class keeps running.</li>
-        <li>To stop: <b>Stop presenting</b> in the studio, or <b>Stop sharing</b> in the notification.</li>
+        <li><span>Tap <b>Download</b>, then open the downloaded file.</span></li>
+        <li><span>If Android asks, allow <b>Install unknown apps</b> for your browser, then tap <b>Install</b>.</span></li>
+        <li><span>Open <b>EEM26 Live</b> → <b>Start teaching</b> and sign in. Schedule a class or start one now.</span></li>
+        <li><span>Tap <b>Share screen</b>, choose <b>Entire screen</b> and tap <b>Start</b>. Switch to any app — the class keeps running.</span></li>
       </ol>
-      <p class="lv-fine">The app only talks to your class server. It isn’t on the Play Store, which is why Android shows an “unknown app” warning. Turn on Do Not Disturb before presenting so notifications don’t show on your shared screen.</p>
-      <a class="lv-link" href="index.html">← Back to the class page</a>
-    </div>
-  </div>
+      <p class="fine">The app isn’t on the Play Store, which is why Android shows an “unknown app” warning. Turn on Do Not Disturb before presenting so notifications don’t appear on your shared screen.</p>
+      <a class="faint" href="index.html" style="font-size:13px">← Back to the home page</a>
+    </section>
+  </main>
 </body>
 </html>

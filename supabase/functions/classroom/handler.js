@@ -216,6 +216,63 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
         return { ok: true };
       }
 
+      // ── Scheduled classes ─────────────────────────────────
+      // The presenter schedules a class and shares class.html?e=<id>: a page
+      // with a countdown that turns into "join" when the room opens.
+      case 'event-save': {
+        checkPassword(body.password);
+        const title = clean(body.title, 120);
+        const startsAt = Date.parse(body.startsAt);
+        const durationMin = Math.round(Number(body.durationMin) || 60);
+        if (title.length < 2) throw new HttpError(400, 'bad_title', 'Give the class a title.');
+        if (!Number.isFinite(startsAt)) throw new HttpError(400, 'bad_time', 'Choose a date and time.');
+        if (durationMin < 5 || durationMin > 24 * 60) throw new HttpError(400, 'bad_duration', 'Length must be between 5 minutes and 24 hours.');
+        const prev = body.id ? await store.getEvent(clean(body.id, 32)) : null;
+        const id = prev?.id || newEventId();
+        const row = await store.saveEvent({
+          id,
+          title,
+          description: clean(body.description, 600),
+          starts_at: new Date(startsAt).toISOString(),
+          duration_min: durationMin,
+          room: prev?.room || `EEM26-${id}`,
+        });
+        return { event: publicEvent(row) };
+      }
+
+      case 'event-list': {
+        checkPassword(body.password);
+        const since = new Date(Date.now() - 7 * 86400e3).toISOString();
+        const rows = await store.listEvents(since);
+        const rooms = await Promise.all(rows.map((e) => store.getRoom(e.room)));
+        return { events: rows.map((e, i) => ({ ...publicEvent(e), live: isLive(rooms[i]) })) };
+      }
+
+      case 'event-delete': {
+        checkPassword(body.password);
+        await store.deleteEvent(clean(body.id, 32));
+        return { ok: true };
+      }
+
+      // Public: what the class page shows.
+      case 'event-info': {
+        const ev = await store.getEvent(clean(body.id, 32));
+        if (!ev) throw new HttpError(404, 'no_event', 'This class link isn’t valid any more.');
+        const room = await store.getRoom(ev.room);
+        return { event: publicEvent(ev), live: isLive(room) };
+      }
+
+      // Public: the next class (or the one live now), for the home page.
+      case 'event-next': {
+        const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+        const rows = await store.listEvents(since);
+        const rooms = await Promise.all(rows.map((e) => store.getRoom(e.room)));
+        const now = Date.now();
+        const live = rows.find((e, i) => isLive(rooms[i]));
+        const next = live || rows.find((e) => Date.parse(e.starts_at) + e.duration_min * 60e3 > now);
+        return { event: next ? publicEvent(next) : null, live: !!live };
+      }
+
       case 'room-info': {
         const room = await store.getRoom(roomName(body.room));
         return { room: room ? publicRoom(room) : null };
@@ -247,6 +304,20 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
       default:
         throw new HttpError(400, 'bad_action');
     }
+  }
+
+  function newEventId() {
+    const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    return [...bytes].map((b) => abc[b % abc.length]).join('');
+  }
+
+  function publicEvent(e) {
+    return { id: e.id, title: e.title, description: e.description || '', startsAt: e.starts_at, durationMin: e.duration_min, room: e.room };
+  }
+
+  function isLive(room) {
+    return !!(room?.open && room.host_data_session);
   }
 
   function trackMeta(m) {
@@ -337,6 +408,25 @@ export function supabaseStore({ url, serviceKey, fetchImpl = (...a) => fetch(...
     async listAttendees(room, after) {
       return rest(`lv_attendees?room=eq.${encodeURIComponent(room)}&id=gt.${after}&order=id.asc&limit=500&select=id,identity,name,data_session`);
     },
+    async getEvent(id) {
+      if (!id) return null;
+      const rows = await rest(`lv_events?id=eq.${encodeURIComponent(id)}&select=*`);
+      return rows[0] || null;
+    },
+    async saveEvent(row) {
+      const rows = await rest('lv_events?on_conflict=id', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(row),
+      });
+      return rows[0];
+    },
+    async listEvents(since) {
+      return rest(`lv_events?starts_at=gte.${encodeURIComponent(since)}&order=starts_at.asc&limit=100&select=*`);
+    },
+    async deleteEvent(id) {
+      await rest(`lv_events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
     async countAttendees(room) {
       // distinct people who joined in the last 3 hours
       const since = new Date(Date.now() - 3 * 3600e3).toISOString();
@@ -348,6 +438,7 @@ export function supabaseStore({ url, serviceKey, fetchImpl = (...a) => fetch(...
 
 export function memoryStore() {
   const rooms = new Map();
+  const events = new Map();
   let attendees = [];
   let seq = 0;
   return {
@@ -357,5 +448,9 @@ export function memoryStore() {
     async addAttendee(row) { const r = { ...row, id: ++seq, created_at: new Date().toISOString() }; attendees.push(r); return r; },
     async listAttendees(room, after) { return attendees.filter((a) => a.room === room && a.id > after).slice(0, 500); },
     async countAttendees(room) { return new Set(attendees.filter((a) => a.room === room).map((a) => a.identity)).size; },
+    async getEvent(id) { return events.get(id) || null; },
+    async saveEvent(row) { const r = { created_at: new Date().toISOString(), ...events.get(row.id), ...row }; events.set(row.id, r); return r; },
+    async listEvents(since) { return [...events.values()].filter((e) => e.starts_at >= since).sort((a, b) => a.starts_at.localeCompare(b.starts_at)); },
+    async deleteEvent(id) { events.delete(id); },
   };
 }

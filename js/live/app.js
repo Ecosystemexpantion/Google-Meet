@@ -256,7 +256,7 @@ function shell() {
   const brand = CFG.BRAND_SHORT || 'EEM26';
   const app = h('div', { class: 'lv-app', id: 'lv-app', 'data-state': 'prejoin' },
     h('header', { class: 'lv-top' },
-      h('div', { class: 'lv-brand' }, h('span', { class: 'lv-chip' }, brand),
+      h('div', { class: 'lv-brand' }, h('img', { class: 'lv-mark', src: 'app/mark.svg', alt: brand }),
         h('div', { class: 'lv-title-wrap' },
           h('div', { class: 'lv-title', id: 'lv-title' }, CFG.CLASS_TITLE || 'Live Class'),
           h('div', { class: 'lv-sub', id: 'lv-sub' }, CFG.PRESENTER_NAME ? `with ${CFG.PRESENTER_NAME}` : ''))),
@@ -349,12 +349,11 @@ function weekRoomName() {
   return `${CFG.ROOM_PREFIX || 'Class'}${now.getFullYear()}W${String(week).padStart(2, '0')}`;
 }
 
+// No room in the link: use the scheduled class that is live (or next).
 async function latestRoomFromSupabase() {
-  const sb = supabaseClient();
-  if (!sb) return '';
   try {
-    const { data } = await sb.from('sessions').select('room_name,is_active').order('created_at', { ascending: false }).limit(1).maybeSingle();
-    return data?.is_active ? data.room_name : '';
+    const { event } = await api('event-next');
+    return event?.room || '';
   } catch { return ''; }
 }
 
@@ -380,7 +379,8 @@ function showPrejoin() {
   if (IS_HOST) {
     const password = sessionStorage.getItem('eem26_host_pw');
     if (!password) { location.href = 'host.html'; return; }
-    const titleIn = h('input', { class: 'lv-input', id: 'pj-title', maxlength: 120, value: CFG.CLASS_TITLE || '', placeholder: 'Session title' });
+    const qs = new URLSearchParams(location.search);
+    const titleIn = h('input', { class: 'lv-input', id: 'pj-title', maxlength: 120, value: qs.get('title') || CFG.CLASS_TITLE || '', placeholder: 'Session title' });
     const micIn = h('input', { type: 'checkbox', id: 'pj-mic', checked: true });
     const camIn = h('input', { type: 'checkbox', id: 'pj-cam' });
     const err = h('div', { class: 'lv-error hidden', role: 'alert' });
@@ -405,14 +405,14 @@ function showPrejoin() {
       }
     };
     ov.append(h('div', { class: 'lv-card' },
-      h('span', { class: 'lv-chip lg' }, CFG.BRAND_SHORT || 'EEM26'),
+      h('img', { class: 'lv-mark lg', src: 'app/mark.svg', alt: CFG.BRAND_SHORT || 'EEM26' }),
       h('h1', {}, 'Presenter studio'),
       h('p', { class: 'muted' }, 'Opening the room lets attendees in. You control screen sharing, chat, reactions and who can speak.'),
       h('label', { class: 'lv-label', for: 'pj-title' }, 'Session title'), titleIn,
       h('div', { class: 'lv-checks' },
         h('label', { class: 'lv-check' }, micIn, 'Join with microphone on')),
       err, btn,
-      h('a', { class: 'lv-link', href: 'host.html', onclick: () => sessionStorage.removeItem('eem26_host_pw') }, 'Sign out')));
+      h('a', { class: 'lv-link', href: 'host.html' }, '← Back to your classes')));
     // Back from another app after Android closed this tab (or after a
     // connection reset): rejoin the class straight away.
     if (sessionStorage.getItem('lv_host_live') === room) {
@@ -457,13 +457,15 @@ function showPrejoin() {
   btn.onclick = attempt;
   nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') attempt(); });
   ov.append(h('div', { class: 'lv-card' },
-    h('span', { class: 'lv-chip lg' }, CFG.BRAND_SHORT || 'EEM26'),
-    h('h1', {}, CFG.CLASS_TITLE || 'Live Class'),
+    h('img', { class: 'lv-mark lg', src: 'app/mark.svg', alt: CFG.BRAND_SHORT || 'EEM26' }),
+    h('h1', {}, new URLSearchParams(location.search).get('t') || CFG.CLASS_TITLE || 'Live Class'),
     h('p', { class: 'muted' }, CFG.PRESENTER_NAME ? `Live with ${CFG.PRESENTER_NAME}. You’ll join as a viewer — raise your hand to speak.` : 'You’ll join as a viewer — raise your hand to speak.'),
     h('label', { class: 'lv-label', for: 'pj-name' }, 'Your name'), nameIn,
     err, btn,
     h('p', { class: 'lv-fine' }, 'Works in any modern browser on phone or computer. No download needed.')));
   if (p.name.length >= 2 && p.room) setTimeout(() => btn.focus(), 50);
+  // Came from the class page with their name already entered: go straight in.
+  if (p.name.length >= 2 && p.room && new URLSearchParams(location.search).get('go')) setTimeout(attempt, 0);
 }
 
 function goLive() {
@@ -1298,17 +1300,17 @@ function endClass(reason) {
   ov.replaceChildren();
   ov.classList.remove('hidden');
   const map = {
-    ended: ['The class has ended', CFG.CLOSING_MESSAGE || 'Thanks for attending.', '🎯'],
-    removed: ['You were removed from the class', 'The presenter removed you from this session.', '👋'],
-    left: ['You left the class', 'Thanks for joining!', '👋'],
+    ended: ['The class has ended', CFG.CLOSING_MESSAGE || 'Thanks for attending.', 'send'],
+    removed: ['You were removed from the class', 'The presenter removed you from this session.', 'x'],
+    left: ['You left the class', 'Thanks for joining!', 'logout'],
   };
-  const [title, text, emoji] = map[reason] || map.left;
+  const [title, text, glyph] = map[reason] || map.left;
   ov.append(h('div', { class: 'lv-card center' },
-    h('div', { class: 'lv-end-emoji' }, emoji),
+    h('div', { class: 'lv-end-orb', html: icon(glyph, 34) }),
     h('h1', {}, title), h('p', { class: 'muted' }, text),
     h('div', { class: 'lv-row' },
       reason === 'left' ? h('button', { class: 'lv-btn primary', onclick: () => location.reload() }, 'Rejoin') : null,
-      h('a', { class: 'lv-btn', href: IS_HOST ? 'host-room.html' : 'index.html' }, IS_HOST ? 'Back to studio' : 'Return to homepage'))));
+      h('a', { class: 'lv-btn', href: IS_HOST ? 'host.html' : 'index.html' }, IS_HOST ? 'Back to your classes' : 'Return to homepage'))));
 }
 
 function confirmEnd() {

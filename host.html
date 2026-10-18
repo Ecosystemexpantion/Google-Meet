@@ -2,28 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EEM26 Host Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>EEM26 · Presenter</title>
   <meta name="robots" content="noindex, nofollow" />
-  <link rel="stylesheet" href="style.css?v=__BUILD__" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236B46C1'/><text y='68' x='50' text-anchor='middle' font-size='36' font-family='sans-serif' font-weight='900' fill='white'>E</text></svg>" />
+  <meta name="theme-color" content="#05060b" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="glass.css?v=__BUILD__" />
+  <link rel="icon" href="app/mark.svg" type="image/svg+xml" />
+  <style>
+    .login { min-height: calc(100dvh - 120px); display: grid; place-items: center; padding: 24px 0; }
+    .login .card { width: min(420px, 100%); display: flex; flex-direction: column; gap: 18px; }
+    .login h1 { font-size: 30px; }
+    .dash { padding: 34px 0 60px; display: flex; flex-direction: column; gap: 22px; }
+    .hello { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; padding: 8px 4px 4px; }
+    .hello h1 { font-size: clamp(30px, 5vw, 46px); }
+    .cols { display: grid; grid-template-columns: 420px 1fr; gap: 22px; align-items: start; }
+    .sec-title { font-family: var(--display); font-weight: 600; font-size: 19px; letter-spacing: -.02em; display: flex; align-items: center; gap: 10px; }
+    .sec-title .ico { color: var(--violet-2); }
+    .created { padding: 16px; border-radius: var(--r-md); background: rgba(62, 229, 155, .08); border: 1px solid rgba(62, 229, 155, .3); display: flex; flex-direction: column; gap: 10px; }
+    .created b { color: #b7f7da; }
+    .linkbox { display: flex; gap: 8px; align-items: center; padding: 6px 6px 6px 14px; border-radius: 999px; background: rgba(0,0,0,.3); border: 1px solid var(--edge); font-size: 13px; color: var(--text-2); }
+    .linkbox span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { text-align: center; padding: 34px 16px; color: var(--text-3); }
+    details summary { cursor: pointer; color: var(--text-3); font-size: 13px; padding: 6px 2px; }
+    @media (max-width: 960px) { .cols { grid-template-columns: 1fr; } }
+  </style>
 </head>
-<body class="page-auth">
-  <div class="auth-card">
-    <div class="auth-logo"><span class="brand-chip" style="font-size:18px;padding:8px 14px;">EEM26</span></div>
-    <h1 class="auth-title">Host Access</h1>
-    <p class="auth-subtitle">Enter your host password to access the control panel</p>
-    <div id="auth-error" class="auth-error hidden" role="alert"></div>
-    <form id="auth-form" novalidate>
-      <label class="auth-label" for="password-input">Host Password</label>
-      <input type="password" id="password-input" class="input-field input-dark" placeholder="Enter password" autocomplete="current-password" required />
-      <button type="submit" id="auth-submit" class="btn btn-primary">Enter Presenter Studio</button>
-    </form>
-    <p style="margin-top:20px;font-size:12px;color:var(--gray-500);text-align:center;">
-      Students: <a href="index.html" style="color:var(--brand-light);text-decoration:none;">go to the training page →</a>
-    </p>
-  </div>
+<body>
+  <div class="aurora"><div class="stars"></div><div class="grain"></div></div>
+  <header class="topbar glass">
+    <a class="brand" href="index.html"><img src="app/mark.svg" alt="" /><span>EEM26 <small>Presenter</small></span></a>
+    <button id="signout" class="btn sm hidden"></button>
+  </header>
+  <main class="shell" id="main"></main>
   <script src="config.js?v=__BUILD__"></script>
-  <script type="module" src="js/host-auth.js?v=__BUILD__"></script>
+  <script type="module" src="js/host.js?v=__BUILD__"></script>
 </body>
 </html>

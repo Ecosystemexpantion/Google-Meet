@@ -45,7 +45,7 @@ const host = await page('host');
 await host.goto(`${BASE}/host.html`);
 await host.fill('#password-input', 'test');
 await host.click('#auth-submit');
-await host.waitForURL(/host-room/);
+await host.waitForSelector('#start-now'); // presenter dashboard
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
 await host.uncheck('#pj-mic');
 await shot(host, '01-host-prejoin');
