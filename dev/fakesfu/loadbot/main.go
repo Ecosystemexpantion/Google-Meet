@@ -87,6 +87,19 @@ func newPC() *webrtc.PeerConnection {
 	return pc
 }
 
+// waitConnected blocks until the connection is up, like the browser client:
+// Cloudflare refuses datachannels/new (425) before that.
+func waitConnected(pc *webrtc.PeerConnection, d time.Duration) error {
+	deadline := time.Now().Add(d)
+	for pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+		if pc.ConnectionState() == webrtc.PeerConnectionStateFailed || time.Now().After(deadline) {
+			return fmt.Errorf("not connected (%s)", pc.ConnectionState())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil
+}
+
 func answer(pc *webrtc.PeerConnection, offer sdesc) (sdesc, error) {
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offer.SDP}); err != nil {
 		return sdesc{}, err
@@ -148,6 +161,9 @@ func bot(i int, wg *sync.WaitGroup) {
 	ans, err := answer(pc, est.SessionDescription)
 	if err == nil {
 		err = post("/sfu/sessions/"+sid+"/renegotiate", sig, map[string]any{"sessionDescription": ans}, nil)
+	}
+	if err == nil {
+		err = waitConnected(pc, 20*time.Second)
 	}
 	if err != nil {
 		log.Printf("bot %d negotiate: %v", i, err)
