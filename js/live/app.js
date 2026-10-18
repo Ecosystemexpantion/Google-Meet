@@ -9,7 +9,7 @@
 // its "room" channel. Attendees only ever see what the presenter relays.
 import { icon } from './icons.js?v=__BUILD__';
 import { api, ApiError, endpoint, supabaseClient } from './api.js?v=__BUILD__';
-import { Media, DataLink, pullTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=__BUILD__';
+import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=__BUILD__';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -490,7 +490,6 @@ async function startHost(res, room, opts = {}) {
   S.settings = { ...S.settings, title: res.room.title || S.settings.title, locked: res.room.locked };
   S.startedAt = res.room.startedAt || Date.now();
 
-  S.media = new Media();
   S.data = new DataLink();
   S.data.addEventListener('state', (e) => onLinkState(e.detail));
   const sessionId = await S.data.open(await iceServers());
@@ -577,8 +576,10 @@ async function startGuest(res, room) {
   S.settings = { ...S.settings, title: res.room.title };
   S.startedAt = res.room.startedAt;
   S.joinCast = res.room.cast;
+  // Start loading the presenter's phone screen and voice now, while the class
+  // connection is still being set up, so they show as soon as possible.
+  if (S.joinCast) applyCastFallback(S.joinCast);
 
-  S.media = new Media();
   S.data = new DataLink();
   S.data.addEventListener('state', (e) => onLinkState(e.detail));
   const sessionId = await S.data.open(await iceServers());
@@ -591,9 +592,10 @@ async function startGuest(res, room) {
   // background; join anyway and pick it up when they're back (watchHost).
   if (roomCh) bindRoomChannel(roomCh);
   else S.hostDataSession = null;
-  await api('register', { token: S.token, dataSession: sessionId });
+  const registered = api('register', { token: S.token, dataSession: sessionId });
   goLive();
-  if (S.joinCast) applyCastFallback(S.joinCast); // see the phone share right away
+  if (S.joinCast) applyCastFallback(S.joinCast); // render it now that the stage exists
+  await registered;
   hello();
   every(10000, () => sendUp({ t: 'ping' }));
   every(5000, watchHost);
@@ -1011,7 +1013,7 @@ function pulled(owner, kind) {
 function pushLocal(kind, track, encodings) {
   const cur = S.local[kind] || {};
   cur.track = track;
-  cur.handle = S.media.push(track, {
+  cur.handle = pushTrack(track, {
     encodings,
     onMeta: (meta) => { cur.meta = meta; afterLocalChange(); },
   });

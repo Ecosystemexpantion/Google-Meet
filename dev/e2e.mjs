@@ -110,6 +110,28 @@ await host.click('.lv-menu-item:has-text("Take off stage")');
 await check('revoking stops their share; stage returns to presenter', () => g2.waitForFunction(() => !/Guest 1/.test(document.querySelector('#lv-stage-label').textContent), null, { timeout: 15000 }));
 await check('attendee loses share button', () => g1.waitForSelector('#ctl-screen', { state: 'detached', timeout: 8000 }));
 
+// ── Allow an attendee to speak: everyone must actually hear them ──
+const voicePackets = (owner) => `(() => {
+  const p = [...window.__lv.pulls.values()].find((x) => x.owner === ${JSON.stringify(owner)} && x.kind === 'mic' && x.track);
+  return p?.handle.pc?.getStats(p.track).then((r) => { let n = 0; r.forEach((s) => { if (s.type === 'inbound-rtp') n += s.packetsReceived || 0; }); return n; }) ?? 0;
+})()`;
+const hears = async (page, owner) => {
+  await page.waitForFunction(voicePackets(owner), null, { timeout: 20000 }).catch(() => {});
+  const a = await page.evaluate(voicePackets(owner));
+  await page.waitForTimeout(2500);
+  const b = await page.evaluate(voicePackets(owner));
+  if (!(b > a)) throw new Error(`no voice from ${owner} (${a} → ${b})`);
+};
+await g2.waitForTimeout(3000); // the attendee has been in the class a while before being invited
+await host.click('.lv-person:has-text("Guest 2") .lv-icon-btn');
+await host.click('.lv-menu-item:has-text("Allow to speak")');
+await g2.waitForSelector('#ctl-mic', { timeout: 8000 });
+await g2.click('#ctl-mic');
+const g2id = await g2.evaluate(() => window.__lv.identity);
+await check('everyone hears the attendee who was allowed to speak', () => Promise.all([hears(g1, g2id), hears(guests[2], g2id)]));
+await host.click('#ctl-mic');
+await check('everyone hears the presenter after they unmute', () => Promise.all([hears(g1, 'host'), hears(g2, 'host')]));
+
 // ── Room controls: chat mode + reactions ──
 await host.click('#ctl-room');
 await host.click('.lv-seg[data-setting="chat"] button[data-value="to-host"]');
