@@ -37,6 +37,13 @@ jobs:
           mkdir -p app
           cp android/app/build/outputs/apk/release/app-release.apk app/eem26-cast.apk
 
+      # Version the site's own JS/CSS URLs so phones never run a stale copy
+      # (GitHub Pages lets browsers cache files for 10 minutes).
+      - name: Stamp asset versions
+        run: |
+          v="${GITHUB_SHA::8}"
+          sed -i "s/__BUILD__/$v/g" *.html js/*.js js/live/*.js
+
       - name: Remove Android build output from the site
         run: rm -rf android/app/build android/.gradle android/build
 
