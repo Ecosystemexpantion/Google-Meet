@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=a5fe8ade';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=a5fe8ade';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=a5fe8ade';
+import { icon } from './icons.js?v=0b87c749';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=0b87c749';
+import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=0b87c749';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
