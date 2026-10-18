@@ -7,6 +7,7 @@ name: Live class test (200 viewers)
 # It also starts on a push of dev/loadtest.env (ROOM=…, VIEWERS=…, MINUTES=…, CHAT=…).
 on:
   push:
+    branches-ignore: ["main", "gh-pages"] # merging must not start a test
     paths: ["dev/loadtest.env"]
   workflow_dispatch:
     inputs:
