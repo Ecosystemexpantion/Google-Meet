@@ -204,7 +204,7 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
           await store.saveRoom(t.room, { cast_info: null });
           return { stop: true };
         }
-        await store.saveRoom(t.room, { cast_info: { screen, mic: trackMeta(body.mic), at: Date.now() } });
+        await store.saveRoom(t.room, { cast_info: { screen, mic: trackMeta(body.mic), at: Date.now(), stats: castStats(body.stats) } });
         return { stop: false };
       }
 
@@ -256,6 +256,14 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
     if (!/^[A-Za-z0-9_-]{8,128}$/.test(sessionId) || !/^[A-Za-z0-9_.:-]{1,80}$/.test(trackName)) return null;
     // simulcast: the app also sends a lighter layer (rid "h") for weak connections
     return m.simulcast === true ? { sessionId, trackName, simulcast: true } : { sessionId, trackName };
+  }
+
+  // What the app reports it is sending (per layer: size, fps, kbps, what
+  // limits it). Kept for checking test runs; small objects only.
+  function castStats(st) {
+    if (!st || typeof st !== 'object') return null;
+    const text = JSON.stringify(st);
+    return text.length <= 1500 ? JSON.parse(text) : null;
   }
 
   // The phone share (EEM26 Cast) as attendees should see it, if it's live.

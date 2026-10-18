@@ -81,12 +81,13 @@ class Signaling(private val api: String, private val token: String) {
     }
 
     /** Tells the presenter page what we're publishing. Returns true when asked to stop. */
-    fun heartbeat(screenTrack: String, micTrack: String?): Boolean {
+    fun heartbeat(screenTrack: String, micTrack: String?, stats: JSONObject? = null): Boolean {
         val body = JSONObject()
             .put("action", "cast-start")
             .put("token", token)
             .put("screen", JSONObject().put("sessionId", sessionId).put("trackName", screenTrack).put("simulcast", true))
         if (micTrack != null) body.put("mic", JSONObject().put("sessionId", sessionId).put("trackName", micTrack))
+        if (stats != null) body.put("stats", stats)
         return call("", "POST", body).optBoolean("stop")
     }
 

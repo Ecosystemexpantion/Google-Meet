@@ -103,11 +103,14 @@ const late = await page({ viewport: { width: 390, height: 844 } });
 await late.goto(`${BASE}/room.html?rm=${ROOM}&n=Late&pid=latelatelate1`);
 await late.click('#pj-join');
 await check('someone joining meanwhile still sees the phone screen', () => playing(late));
-await check('phone viewers get the lighter layer, computers the full one', async () => {
+await check('every viewer gets full quality; a weak connection drops to the lighter layer', async () => {
   const size = (p) => p.evaluate(() => document.querySelector('#lv-main video').videoHeight);
   await late.waitForTimeout(3000);
-  const [big, small] = [await size(guest), await size(late)];
-  if (!(small > 0 && small <= big * 0.6)) throw new Error(`computer ${big}p, phone ${small}p`);
+  const [big, phone] = [await size(guest), await size(late)];
+  if (!(phone > 0 && phone === big)) throw new Error(`computer ${big}p, phone ${phone}p`);
+  // what adaptScreen() does when packets are being lost
+  await late.evaluate(() => { const e = [...window.__lv.pulls.values()].find((p) => p.kind === 'screen'); e.rid = 'h'; e.handle.setRid('h'); });
+  await late.waitForFunction((b) => { const h = document.querySelector('#lv-main video').videoHeight; return h > 0 && h <= b * 0.6; }, big, { timeout: 10000 });
 });
 
 // ── Presenter comes back: the studio rejoins on its own ──

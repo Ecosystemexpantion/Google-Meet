@@ -44,13 +44,14 @@ while (Date.now() < end) {
       at: Date.now(),
       frames: q ? q.totalVideoFrames - q.droppedVideoFrames : 0,
       h: v?.videoHeight || 0,
+      rid: [...(window.__lv?.pulls?.values() || [])].find((x) => x.kind === 'screen')?.rid || '',
       count: Number(document.querySelector('#lv-count')?.textContent || 0),
       chats: document.querySelectorAll('#lv-chat-list .lv-msg').length,
       status: document.querySelector('#lv-status:not(.hidden)')?.textContent || '',
     };
   }));
   const s = samples.at(-1), prev = samples.at(-2);
-  if (samples.length % 15 === 0 && prev) console.log(`viewers ${s.count} · ${s.h}p · ${s.frames - prev.frames} fps · chat ${s.chats}${s.status ? ` · ${s.status}` : ''}`);
+  if (samples.length % 15 === 0 && prev) console.log(`viewers ${s.count} · ${s.h}p (${s.rid || '-'}) · ${s.frames - prev.frames} fps · chat ${s.chats}${s.status ? ` · ${s.status}` : ''}`);
   await p.waitForTimeout(1000);
 }
 await browser.close();
@@ -76,6 +77,7 @@ const lines = [
   `| Joined the class | ${joinedIn.toFixed(1)} s |`,
   `| Presenter screen showed | ${videoIn == null ? '**no**' : `${videoIn.toFixed(1)} s`} |`,
   `| Picture size (phone viewer) | ${last.h || 0}p |`,
+  `| Time on the lighter layer | ${Math.round(100 * samples.filter((s) => s.rid === 'h').length / Math.max(1, samples.length))}% |`,
   `| Average frames per second | ${avg.toFixed(1)} |`,
   `| Freezes (2 s+ with no new frame) | ${freezes} |`,
   `| Most people in the class | ${peak} |`,

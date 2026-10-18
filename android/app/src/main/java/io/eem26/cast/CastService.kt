@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.Handler
@@ -19,6 +20,7 @@ import org.webrtc.MediaConstraints
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.RTCStatsReport
 import org.webrtc.ResolutionAdjustment
 import org.webrtc.RtpParameters
 import org.webrtc.RtpTransceiver
@@ -28,6 +30,7 @@ import org.webrtc.SessionDescription
 import org.webrtc.SimulcastAlignedVideoEncoderFactory
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.audio.JavaAudioDeviceModule
+import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -52,6 +55,8 @@ class CastService : Service() {
         const val EXTRA_MIC = "mic"
         private const val CHANNEL = "cast"
         private const val NOTIFICATION_ID = 26
+        private const val FULL_BPS = 1_500_000
+        private const val HALF_BPS = 450_000
 
         @Volatile var running = false
             private set
@@ -123,9 +128,12 @@ class CastService : Service() {
 
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(ctx).createInitializationOptions())
         val egl = EglBase.create().also { this.egl = it }
+        // Voice: the phone's call-mode microphone plus WebRTC's own noise
+        // suppression (much stronger than most phones' built-in filter).
         val adm = JavaAudioDeviceModule.builder(ctx)
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
             .setUseHardwareAcousticEchoCanceler(true)
-            .setUseHardwareNoiseSuppressor(true)
+            .setUseHardwareNoiseSuppressor(false)
             .createAudioDeviceModule()
         val factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(adm)
@@ -148,7 +156,7 @@ class CastService : Service() {
         val (w, h) = captureSize()
         capturer.startCapture(w, h, 15)
         val videoTrack = factory.createVideoTrack("screen", videoSource)
-        val audioTrack = if (mic) factory.createAudioTrack("mic", factory.createAudioSource(MediaConstraints())) else null
+        val audioTrack = if (mic) factory.createAudioTrack("mic", factory.createAudioSource(voiceConstraints())) else null
 
         // Connection to Cloudflare
         val config = PeerConnection.RTCConfiguration(sig.iceServers()).apply {
@@ -172,12 +180,12 @@ class CastService : Service() {
         // connections, "h" (half size, a quarter of the data) for phones and
         // weak connections. Each viewer only receives the one it needs.
         val full = RtpParameters.Encoding("f", true, 1.0).apply {
-            maxBitrateBps = 1_200_000
+            maxBitrateBps = FULL_BPS
             maxFramerate = 15
         }
         val half = RtpParameters.Encoding("h", true, 2.0).apply {
-            maxBitrateBps = 300_000
-            maxFramerate = 10
+            maxBitrateBps = HALF_BPS
+            maxFramerate = 15
         }
         val videoTx = pc.addTransceiver(videoTrack, RtpTransceiver.RtpTransceiverInit(
             RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("cast"), listOf(full, half)))
@@ -186,11 +194,7 @@ class CastService : Service() {
         val caps = factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
         val (vp8, others) = caps.partition { it.name.equals("VP8", ignoreCase = true) }
         if (vp8.isNotEmpty()) videoTx.setCodecPreferences(vp8 + others)
-        // Screens are mostly text: keep them sharp and drop frames instead.
-        videoTx.sender.parameters.let { p ->
-            p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
-            videoTx.sender.parameters = p
-        }
+        applySendLimits(videoTx)
         val audioTx = audioTrack?.let {
             pc.addTransceiver(it, RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf("cast")))
         }
@@ -205,6 +209,8 @@ class CastService : Service() {
         if (audioTx != null && micName != null) tracks += audioTx.mid to micName
         val answer = sig.pushTracks(pc.localDescription.description, tracks)
         setSdp { obs -> pc.setRemoteDescription(obs, SessionDescription(SessionDescription.Type.ANSWER, answer)) }
+        // Some encoders only honour the limits once negotiation is done.
+        applySendLimits(videoTx)
         setStatus("Going live…")
 
         // Heartbeat: keeps the class showing this share; the presenter studio
@@ -212,7 +218,7 @@ class CastService : Service() {
         var failures = 0
         while (!stopping) {
             try {
-                if (sig.heartbeat(screenName, micName)) {
+                if (sig.heartbeat(screenName, micName, sendStats(pc))) {
                     stopCast("Stopped from the presenter studio")
                     return
                 }
@@ -225,6 +231,59 @@ class CastService : Service() {
             }
             try { Thread.sleep(5_000) } catch (e: InterruptedException) { return }
         }
+    }
+
+    /** Bitrate/frame-rate caps per layer, and smooth motion over sharpness when squeezed. */
+    private fun applySendLimits(tx: RtpTransceiver) {
+        val p = tx.sender.parameters
+        for (e in p.encodings) {
+            when (e.rid) {
+                "f" -> { e.maxBitrateBps = FULL_BPS; e.maxFramerate = 15 }
+                "h" -> { e.maxBitrateBps = HALF_BPS; e.maxFramerate = 15; e.scaleResolutionDownBy = 2.0 }
+            }
+        }
+        p.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+        tx.sender.parameters = p
+    }
+
+    private fun voiceConstraints() = MediaConstraints().apply {
+        for (k in listOf("googEchoCancellation", "googAutoGainControl", "googNoiseSuppression", "googHighpassFilter")) {
+            mandatory.add(MediaConstraints.KeyValuePair(k, "true"))
+        }
+    }
+
+    // What the phone is really sending, reported with each heartbeat so the
+    // class server (and whoever checks a test run) can see it.
+    private var lastBytes = mutableMapOf<String, Pair<Long, Double>>()
+
+    private fun sendStats(pc: PeerConnection): JSONObject? {
+        val latch = CountDownLatch(1)
+        var report: RTCStatsReport? = null
+        pc.getStats { r -> report = r; latch.countDown() }
+        if (!latch.await(3, TimeUnit.SECONDS)) return null
+        val out = JSONObject()
+        for (st in report?.statsMap?.values ?: return null) {
+            val m = st.members
+            when (st.type) {
+                "outbound-rtp" -> {
+                    if (m["kind"] != "video") continue
+                    val rid = m["rid"] as? String ?: "-"
+                    val bytes = (m["bytesSent"] as? java.math.BigInteger)?.toLong() ?: (m["bytesSent"] as? Number)?.toLong() ?: 0L
+                    val prev = lastBytes[rid]
+                    lastBytes[rid] = bytes to st.timestampUs
+                    val kbps = if (prev != null && st.timestampUs > prev.second) ((bytes - prev.first) * 8_000.0 / (st.timestampUs - prev.second)).toInt() else null
+                    out.put(rid, JSONObject()
+                        .put("w", m["frameWidth"]).put("h", m["frameHeight"])
+                        .put("fps", m["framesPerSecond"]).put("kbps", kbps)
+                        .put("limit", m["qualityLimitationReason"]))
+                }
+                "candidate-pair" -> if (m["nominated"] == true && m["state"] == "succeeded") {
+                    out.put("upKbps", (m["availableOutgoingBitrate"] as? Number)?.toInt()?.div(1000))
+                    out.put("rttMs", (m["currentRoundTripTime"] as? Number)?.toDouble()?.times(1000)?.toInt())
+                }
+            }
+        }
+        return out
     }
 
     private fun captureSize(): Pair<Int, Int> {
