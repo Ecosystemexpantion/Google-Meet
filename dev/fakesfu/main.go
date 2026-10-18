@@ -101,7 +101,13 @@ type session struct {
 	dcs      map[uint16]*webrtc.DataChannel
 	nextDC   uint16
 	lastSeen time.Time
+	created  time.Time
+	everUp   bool // the PeerConnection has connected at least once
 }
+
+// Like Cloudflare: a session whose PeerConnection never connected is dropped
+// after a while, and later calls on it get 410 "Session appears to be disconnected".
+var idleDrop = 8 * time.Second
 
 var (
 	mu       sync.Mutex
@@ -199,6 +205,11 @@ func (s *session) ensurePC() error {
 		}
 	})
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
+		if st == webrtc.PeerConnectionStateConnected {
+			s.mu.Lock()
+			s.everUp = true
+			s.mu.Unlock()
+		}
 		if st == webrtc.PeerConnectionStateFailed || st == webrtc.PeerConnectionStateClosed {
 			s.cleanup()
 		}
@@ -321,7 +332,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := parts[4:]
 	if len(rest) == 1 && rest[0] == "new" {
-		s := &session{id: rid(), midName: map[string]string{}, subs: map[string]*subTrack{}, dcs: map[uint16]*webrtc.DataChannel{}, nextDC: 2}
+		s := &session{id: rid(), created: time.Now(), midName: map[string]string{}, subs: map[string]*subTrack{}, dcs: map[uint16]*webrtc.DataChannel{}, nextDC: 2}
 		mu.Lock()
 		sessions[s.id] = s
 		mu.Unlock()
@@ -342,6 +353,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	op := strings.Join(rest[1:], "/")
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.everUp && time.Since(s.created) > idleDrop && op != "renegotiate" {
+		errJSON(w, 410, "Session appears to be disconnected")
+		return
+	}
 	if err := s.ensurePC(); err != nil {
 		errJSON(w, 500, err.Error())
 		return
