@@ -5,8 +5,8 @@
 // All SFU calls go through the Supabase Edge Function proxy, which holds the
 // Cloudflare secret. It hands back a signature for every session we create;
 // this module attaches it to later calls on that session.
-import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=7f7aad11';
-import { endpoint } from './api.js?v=7f7aad11';
+import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=6773c834';
+import { endpoint } from './api.js?v=6773c834';
 
 const SFU = () => `${endpoint()}/sfu`;
 const sigs = new Map();
@@ -23,6 +23,7 @@ const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input.url;
   if (!url.startsWith(SFU())) return nativeFetch(input, init);
+  if (url === `${SFU()}/generate-ice-servers`) return new Response(await cachedIce(), { headers: { 'Content-Type': 'application/json' } });
   const headers = new Headers(init.headers);
   const m = /\/sessions\/([A-Za-z0-9_-]+)\//.exec(url);
   if (/\/sessions\/new/.test(url)) headers.set('x-lv-token', authToken || '');
@@ -36,6 +37,21 @@ window.fetch = async (input, init = {}) => {
   return res;
 };
 
+// ICE/TURN servers are fetched once and reused for 10 minutes (credentials
+// last a day): each new connection would otherwise cost an extra round trip.
+let icePromise = null;
+let iceAt = 0;
+function cachedIce() {
+  if (!icePromise || Date.now() - iceAt > 600000) {
+    iceAt = Date.now();
+    icePromise = nativeFetch(`${SFU()}/generate-ice-servers`).then((r) => {
+      if (!r.ok) throw new Error(`ice ${r.status}`);
+      return r.text();
+    }).catch((e) => { icePromise = null; throw e; });
+  }
+  return icePromise;
+}
+
 async function sfu(path, method, body) {
   const res = await window.fetch(`${SFU()}/${path}`, { method, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
@@ -48,8 +64,13 @@ export class Media {
   constructor() {
     this.pt = new PartyTracks({ prefix: SFU() });
     this.state$ = this.pt.peerConnectionState$;
-    this.pc = null; // for reading receive stats and closing
-    this.pcSub = this.pt.peerConnection$.subscribe((pc) => { this.pc = pc; });
+    this.pc = null; // for reading stats and closing; set once the session exists
+    this.pcSub = null;
+  }
+
+  /** Keep a handle on the connection (call after the first push/pull starts it). */
+  watchPc() {
+    this.pcSub ||= this.pt.peerConnection$.subscribe((pc) => { this.pc = pc; });
   }
 
   /**
@@ -96,6 +117,7 @@ export function pullTrack(meta, { rid, onTrack } = {}) {
         next: (t) => { tries = 0; onTrack?.(t); },
         error: (e) => { console.warn('pull', e); restart(); },
       });
+    media.watchPc();
   };
   const restart = () => {
     if (stopped) return;
@@ -106,6 +128,46 @@ export function pullTrack(meta, { rid, onTrack } = {}) {
   start();
   return {
     setRid: (r) => { if (rid) rid$.next(r); },
+    restart,
+    stop: () => { stopped = true; clearTimeout(timer); teardown(); },
+    get pc() { return media?.pc || null; },
+  };
+}
+
+/**
+ * Send one local track (microphone, screen…) on its own connection, opened
+ * only when sending starts: Cloudflare drops a session that sits unused, so a
+ * connection opened at join time and first used minutes later is refused.
+ * On any error it is redone on a fresh connection; onMeta then reports the
+ * new track so everyone re-subscribes.
+ */
+export function pushTrack(track, { encodings, onMeta } = {}) {
+  const source = new BehaviorSubject(track);
+  let media = null;
+  let sub = null;
+  let stopped = false;
+  let tries = 0;
+  let timer = null;
+  const teardown = () => { sub?.unsubscribe(); sub = null; media?.close(); media = null; };
+  const start = () => {
+    if (stopped) return;
+    media = new Media();
+    sub = media.pt.push(source, encodings ? { sendEncodings$: of(encodings) } : {})
+      .subscribe({
+        next: (meta) => { tries = 0; onMeta?.({ sessionId: meta.sessionId, trackName: meta.trackName, location: 'remote' }); },
+        error: (e) => { console.warn('push', e); restart(); },
+      });
+    media.watchPc();
+  };
+  const restart = () => {
+    if (stopped) return;
+    teardown();
+    clearTimeout(timer);
+    timer = setTimeout(start, Math.min(1500 * ++tries, 10000));
+  };
+  start();
+  return {
+    replace: (t) => source.next(t),
     restart,
     stop: () => { stopped = true; clearTimeout(timer); teardown(); },
     get pc() { return media?.pc || null; },
