@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=a032eb9d';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=a032eb9d';
-import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=a032eb9d';
+import { icon } from './icons.js?v=32ecbaba';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=32ecbaba';
+import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=32ecbaba';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -1124,6 +1124,14 @@ function toggleScreen() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       // Phone browsers (Android and iPhone) don't let web pages capture the screen.
       if (IS_HOST && NATIVE) { // inside the EEM26 Live app: share natively
+        // The app can only share into one class at a time. If it's still
+        // sharing into another class (or a share that was never stopped),
+        // move it here instead of refusing.
+        if (NATIVE.isSharing?.()) {
+          toast('Moving your screen share to this class…', 'info');
+          NATIVE.stopShare();
+          for (let i = 0; i < 25 && NATIVE.isSharing(); i++) await new Promise((r) => setTimeout(r, 200));
+        }
         NATIVE.startShare(endpoint(), S.token, S.room);
         return;
       }

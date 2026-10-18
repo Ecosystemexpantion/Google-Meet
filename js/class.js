@@ -2,8 +2,8 @@
 // Before the class: countdown, add to calendar, share. When the presenter
 // opens the room it turns into "Live now — join"; someone who entered their
 // name early is taken straight in.
-import { api } from './live/api.js?v=a032eb9d';
-import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=a032eb9d';
+import { api } from './live/api.js?v=32ecbaba';
+import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=32ecbaba';
 
 const id = new URLSearchParams(location.search).get('e') || '';
 const app = $('#app');

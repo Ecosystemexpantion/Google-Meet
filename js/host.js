@@ -1,8 +1,8 @@
 // ─── Presenter: sign in, schedule classes, share links, start ─────
 // The password is checked by the server (HOST_PASSWORD secret); it is kept in
 // this tab's sessionStorage, like before, for the studio to open rooms.
-import { api } from './live/api.js?v=a032eb9d';
-import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=a032eb9d';
+import { api } from './live/api.js?v=32ecbaba';
+import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=32ecbaba';
 
 const main = $('#main');
 const signout = $('#signout');

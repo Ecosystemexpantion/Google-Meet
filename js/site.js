@@ -1,5 +1,5 @@
 // ─── Shared helpers for the site pages (home, class page, dashboard) ──
-import { icon } from './live/icons.js?v=a032eb9d';
+import { icon } from './live/icons.js?v=32ecbaba';
 
 export { icon };
 export const CFG = window.EEM26_CONFIG || {};
