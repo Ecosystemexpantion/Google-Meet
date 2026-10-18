@@ -34,13 +34,6 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const ALL_SOURCES = [
-  TrackSource.CAMERA,
-  TrackSource.MICROPHONE,
-  TrackSource.SCREEN_SHARE,
-  TrackSource.SCREEN_SHARE_AUDIO,
-];
-
 class HttpError extends Error {
   constructor(status, code, message) {
     super(message || code);
