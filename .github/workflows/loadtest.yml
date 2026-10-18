@@ -4,7 +4,10 @@ name: Live class test (200 viewers)
 # real Chrome "phone" viewer that measures what people would see.
 # Start the class and share your screen first, then press "Run workflow".
 # Viewers show up as "Test viewer N" and leave by themselves at the end.
+# It also starts on a push of dev/loadtest.env (ROOM=…, VIEWERS=…, MINUTES=…, CHAT=…).
 on:
+  push:
+    paths: ["dev/loadtest.env"]
   workflow_dispatch:
     inputs:
       room:
@@ -21,6 +24,10 @@ on:
         default: "5"
 
 env:
+  ROOM: ${{ inputs.room }}
+  VIEWERS: ${{ inputs.viewers }}
+  MINUTES: ${{ inputs.minutes }}
+  CHAT: ${{ inputs.chat }}
   API: https://leqizarzgfpiriknpnxw.supabase.co/functions/v1/classroom
   SITE: https://ecosystemexpantion.github.io/Google-Meet/
 
@@ -39,18 +46,15 @@ jobs:
         with:
           go-version-file: dev/fakesfu/go.mod
           cache-dependency-path: dev/fakesfu/go.sum
-      - run: go build -o loadbot ./loadbot
+      - run: go build -o "$RUNNER_TEMP/loadbot" ./loadbot
         working-directory: dev/fakesfu
       - name: Test viewers join and watch
         env:
-          ROOM: ${{ inputs.room }}
-          VIEWERS: ${{ inputs.viewers }}
-          MINUTES: ${{ inputs.minutes }}
-          CHAT: ${{ inputs.chat }}
           PART: ${{ matrix.part }}
         run: |
+          [ -n "$ROOM" ] || . dev/loadtest.env
           n=$(( (VIEWERS + 3 - PART) / 4 ))
-          ./dev/fakesfu/loadbot -api "$API" -room "$ROOM" -n "$n" -rate 4 -d "${MINUTES}m" -chat "$CHAT" -name "Test viewer $PART-" 2>&1 | tee bots.log
+          "$RUNNER_TEMP/loadbot" -api "$API" -room "$ROOM" -n "$n" -rate 4 -d "${MINUTES}m" -chat "$CHAT" -name "Test $PART" 2>&1 | tee bots.log
           echo "**Part $PART:** $(grep FINAL bots.log | sed 's/FINAL //') of $n" >> "$GITHUB_STEP_SUMMARY"
 
   probe:
@@ -63,10 +67,9 @@ jobs:
           node-version: "22"
       - run: npm install --no-save --no-package-lock playwright@1.56.1 && npx playwright install --with-deps chromium
       - name: Real phone viewer measures the class
-        env:
-          ROOM: ${{ inputs.room }}
-          # join once most test viewers are in, then watch until they leave
-          MINUTES: ${{ inputs.minutes }}
+        # join once most test viewers are in, then watch until they leave
         run: |
+          [ -n "$ROOM" ] || . dev/loadtest.env
+          export ROOM
           sleep 45
           MINUTES=$(awk "BEGIN{print $MINUTES - 1}") node dev/real-probe.mjs
