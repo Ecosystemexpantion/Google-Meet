@@ -1,20 +1,22 @@
 // EEM26 Selar Setup Training — Platform Configuration
 // =====================================================
 // To change the training schedule, update TRAINING_DAY, TRAINING_HOUR etc.
-// To change the host password, run:  echo -n 'newpassword' | sha256sum
-// and paste the result into HOST_PASSWORD_HASH.
+// The host password and Cloudflare keys are NOT here — they are secrets on the
+// Supabase Edge Function (see README.md → "Secrets").
 // =====================================================
 
 window.EEM26_CONFIG = {
   SUPABASE_URL:      'https://leqizarzgfpiriknpnxw.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcWl6YXJ6Z2ZwaXJpa25wbnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNzgxNTcsImV4cCI6MjA5NTc1NDE1N30.LNSMP3LXJv_QKE9COMmm9OS5axVGqw_60m750c6bBeg',
 
-  // Jitsi meeting server — used to build the "Open Video Call" URL (no iframe embedding)
-  JITSI_DOMAIN: 'meet.jit.si',
+  // Live classroom API. Leave empty to use the Supabase Edge Function at
+  // SUPABASE_URL/functions/v1/classroom (which talks to Cloudflare Realtime).
+  CLASSROOM_API: '',
 
-  // Host password — SHA-256 hash of 'EEM26@2026'
-  // To change: run  echo -n 'newpassword' | sha256sum  and paste result here
-  HOST_PASSWORD_HASH: 'c9ff041c67a228bc7c4bcaf9df652d62f593ec33c1dd3921e06fe75f0b9a038e',
+  // Branding shown in the classroom
+  BRAND_SHORT:    'EEM26',
+  CLASS_TITLE:    'Selar Setup Training',
+  PRESENTER_NAME: 'Coach Victor',
 
   // Training schedule (used for the countdown timer)
   TRAINING_DAY:              0,   // 0 = Sunday
