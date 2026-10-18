@@ -88,6 +88,7 @@ class CastService : Service() {
     private var pc: PeerConnection? = null
     private var signaling: Signaling? = null
     @Volatile private var audioTrack: org.webrtc.AudioTrack? = null
+    private val connected = CountDownLatch(1)
     private var guest = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -183,7 +184,7 @@ class CastService : Service() {
         val pc = factory.createPeerConnection(config, object : PeerObserver() {
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
                 when (newState) {
-                    PeerConnection.PeerConnectionState.CONNECTED -> setStatus("Live — everyone can see your screen")
+                    PeerConnection.PeerConnectionState.CONNECTED -> { connected.countDown(); setStatus("Live — everyone can see your screen") }
                     PeerConnection.PeerConnectionState.DISCONNECTED -> setStatus("Connection unstable — reconnecting…")
                     PeerConnection.PeerConnectionState.FAILED -> stopCast("Connection lost. Tap Start sharing to try again.")
                     else -> {}
@@ -228,6 +229,9 @@ class CastService : Service() {
         // Some encoders only honour the limits once negotiation is done.
         applySendLimits(videoTx)
         setStatus("Going live…")
+        // Only announce the share once it is really flowing: a viewer who asks
+        // for it earlier is refused and would wait on "Loading…".
+        connected.await(15, TimeUnit.SECONDS)
 
         if (guest) {
             // The class page (attendee) tells the presenter about this track.

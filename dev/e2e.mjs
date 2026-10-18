@@ -71,15 +71,14 @@ await check('attendees have no publish controls', async () => {
   if (await g1.$('#ctl-mic') || await g1.$('#ctl-screen')) throw new Error('guest sees mic/screen');
 });
 
-// ── Presenter shares screen + camera ──
+// ── Presenter shares screen (classes are screen + voice; no camera) ──
 await host.click('#ctl-screen');
-await host.click('#ctl-cam');
 const videoPlaying = (p) => p.waitForFunction(() => {
   const v = document.querySelector('#lv-main video');
   return v && v.videoWidth > 0 && !v.paused;
 }, null, { timeout: 20000 });
 await check('all attendees receive the presenter screen', () => Promise.all(guests.map(videoPlaying)));
-await check('presenter camera shows as picture-in-picture', () => g1.waitForSelector('#lv-pip:not(.hidden) video', { timeout: 15000 }));
+await check('no camera button for anyone', async () => { for (const p of [host, ...guests]) if (await p.$('#ctl-cam')) throw new Error('camera button shown'); });
 await check('presenter sees "You’re presenting"', () => host.waitForSelector('.lv-presenting'));
 
 // ── Chat ──

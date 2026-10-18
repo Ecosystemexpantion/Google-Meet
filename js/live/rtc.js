@@ -69,11 +69,25 @@ export class Media {
   /** Pull a remote track; onTrack receives the MediaStreamTrack. */
   pull(meta, { rid, onTrack } = {}) {
     const rid$ = new BehaviorSubject(rid);
-    const sub = this.pt.pull(of({ sessionId: meta.sessionId, trackName: meta.trackName, location: 'remote' }), rid ? { simulcast: { preferredRid$: rid$ } } : {})
-      .subscribe({ next: (t) => onTrack?.(t), error: (e) => console.warn('pull', e) });
+    let sub = null;
+    let stopped = false;
+    let tries = 0;
+    // A track that was announced a moment before it is really flowing gets
+    // refused; ask again (1.5 s, 3 s, … up to ~1 minute) instead of giving up.
+    const start = () => {
+      sub = this.pt.pull(of({ sessionId: meta.sessionId, trackName: meta.trackName, location: 'remote' }), rid ? { simulcast: { preferredRid$: rid$ } } : {})
+        .subscribe({
+          next: (t) => onTrack?.(t),
+          error: (e) => {
+            console.warn('pull', e);
+            if (!stopped && tries < 8) setTimeout(() => { if (!stopped) start(); }, 1500 * ++tries);
+          },
+        });
+    };
+    start();
     return {
       setRid: (r) => { if (rid) rid$.next(r); },
-      stop: () => sub.unsubscribe(),
+      stop: () => { stopped = true; sub?.unsubscribe(); },
     };
   }
 }
