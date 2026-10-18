@@ -56,11 +56,15 @@ await app.evaluate(async ({ api, token }) => {
   const s = await post('/sfu/sessions/new', null, { 'x-lv-token': token });
   const pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle' });
   const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 720, height: 1280 }, audio: true });
-  const tv = pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendonly' });
+  // same two layers as the app: "f" full size, "h" half size for weak connections
+  const tv = pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendonly', sendEncodings: [
+    { rid: 'f', maxBitrate: 1_200_000, maxFramerate: 15 },
+    { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: 300_000, maxFramerate: 10 },
+  ] });
   const ta = pc.addTransceiver(stream.getAudioTracks()[0], { direction: 'sendonly' });
   await pc.setLocalDescription(await pc.createOffer());
   const id = crypto.randomUUID().slice(0, 8);
-  const screen = { sessionId: s.sessionId, trackName: `cast-screen-${id}` };
+  const screen = { sessionId: s.sessionId, trackName: `cast-screen-${id}`, simulcast: true };
   const mic = { sessionId: s.sessionId, trackName: `cast-mic-${id}` };
   const res = await post(`/sfu/sessions/${s.sessionId}/tracks/new`, {
     sessionDescription: { type: 'offer', sdp: pc.localDescription.sdp },
@@ -99,6 +103,12 @@ const late = await page({ viewport: { width: 390, height: 844 } });
 await late.goto(`${BASE}/room.html?rm=${ROOM}&n=Late&pid=latelatelate1`);
 await late.click('#pj-join');
 await check('someone joining meanwhile still sees the phone screen', () => playing(late));
+await check('phone viewers get the lighter layer, computers the full one', async () => {
+  const size = (p) => p.evaluate(() => document.querySelector('#lv-main video').videoHeight);
+  await late.waitForTimeout(3000);
+  const [big, small] = [await size(guest), await size(late)];
+  if (!(small > 0 && small <= big * 0.6)) throw new Error(`computer ${big}p, phone ${small}p`);
+});
 
 // ── Presenter comes back: the studio rejoins on its own ──
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);

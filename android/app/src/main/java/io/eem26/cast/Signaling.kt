@@ -85,7 +85,7 @@ class Signaling(private val api: String, private val token: String) {
         val body = JSONObject()
             .put("action", "cast-start")
             .put("token", token)
-            .put("screen", JSONObject().put("sessionId", sessionId).put("trackName", screenTrack))
+            .put("screen", JSONObject().put("sessionId", sessionId).put("trackName", screenTrack).put("simulcast", true))
         if (micTrack != null) body.put("mic", JSONObject().put("sessionId", sessionId).put("trackName", micTrack))
         return call("", "POST", body).optBoolean("stop")
     }

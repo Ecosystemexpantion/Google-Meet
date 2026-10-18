@@ -30,6 +30,7 @@ var (
 	rate    = flag.Int("rate", 20, "joins per second")
 	dur     = flag.Duration("d", 60*time.Second, "how long to stay")
 	chatPct = flag.Int("chat", 10, "percent of bots that send one chat message")
+	prefix  = flag.String("name", "Bot", "attendee name prefix")
 
 	joined, withState, withVideo, chats, failed int64
 	videoBytes                                  int64
@@ -38,6 +39,7 @@ var (
 type meta struct {
 	SessionID string `json:"sessionId"`
 	TrackName string `json:"trackName"`
+	NoRid     bool   `json:"noRid"` // single-layer share (older phone app)
 }
 
 func post(path string, hdr map[string]string, body any, out any) error {
@@ -122,7 +124,7 @@ func bot(i int, wg *sync.WaitGroup) {
 			HostDataSession string `json:"hostDataSession"`
 		} `json:"room"`
 	}
-	if err := post("", nil, map[string]any{"action": "join", "room": *room, "name": fmt.Sprintf("Bot %d", i), "id": id}, &j); err != nil {
+	if err := post("", nil, map[string]any{"action": "join", "room": *room, "name": fmt.Sprintf("%s %d", *prefix, i), "id": id}, &j); err != nil {
 		log.Printf("bot %d join: %v", i, err)
 		atomic.AddInt64(&failed, 1)
 		return
@@ -280,7 +282,12 @@ func pull(i int, token string, m meta, gotVideo *int32) {
 	var res struct {
 		SessionDescription sdesc `json:"sessionDescription"`
 	}
-	err = post("/sfu/sessions/"+sid+"/tracks/new", sig, map[string]any{"tracks": []map[string]any{{"location": "remote", "sessionId": m.SessionID, "trackName": m.TrackName, "simulcast": map[string]string{"preferredRid": "h"}}}}, &res)
+	// like a phone viewer: the lighter layer when the share has one
+	tr := map[string]any{"location": "remote", "sessionId": m.SessionID, "trackName": m.TrackName}
+	if !m.NoRid {
+		tr["simulcast"] = map[string]string{"preferredRid": "h"}
+	}
+	err = post("/sfu/sessions/"+sid+"/tracks/new", sig, map[string]any{"tracks": []map[string]any{tr}}, &res)
 	if err == nil {
 		var ans sdesc
 		if ans, err = answer(pc, res.SessionDescription); err == nil {
