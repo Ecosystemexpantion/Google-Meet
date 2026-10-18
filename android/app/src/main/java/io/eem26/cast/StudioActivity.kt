@@ -52,6 +52,7 @@ class StudioActivity : Activity() {
 
     private lateinit var web: WebView
     private var pendingShare: Triple<String, String, String>? = null
+    private var pendingGuest = false
     private var pendingWebPermission: PermissionRequest? = null
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -84,6 +85,8 @@ class StudioActivity : Activity() {
             }
         }
         setContentView(web)
+        // An attendee's phone share: hand the track to the page, which tells the presenter.
+        CastService.shareListener = { json -> web.evaluateJavascript("window.__eem26Share && window.__eem26Share(${json ?: "null"})", null) }
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(SITE + page)
     }
 
@@ -96,6 +99,7 @@ class StudioActivity : Activity() {
     // while the presenter is in another app.
 
     override fun onDestroy() {
+        CastService.shareListener = null
         web.destroy()
         super.onDestroy()
     }
@@ -126,14 +130,15 @@ class StudioActivity : Activity() {
     }
 
     // ── Screen sharing ──
-    private fun beginShare(api: String, token: String, room: String) {
+    private fun beginShare(api: String, token: String, room: String, guest: Boolean = false) {
         if (CastService.running) {
             Toast.makeText(this, "You’re already sharing your screen.", Toast.LENGTH_SHORT).show()
             return
         }
         pendingShare = Triple(api, token, room)
+        pendingGuest = guest
         val needed = mutableListOf<String>()
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.RECORD_AUDIO
+        if (!guest && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.RECORD_AUDIO
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             needed += Manifest.permission.POST_NOTIFICATIONS
         }
@@ -176,7 +181,8 @@ class StudioActivity : Activity() {
             Toast.makeText(this, "Screen sharing wasn’t allowed.", Toast.LENGTH_SHORT).show()
             return
         }
-        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        // Attendees keep speaking through the class page; only the presenter's app shares the mic.
+        val mic = !pendingGuest && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val svc = Intent(this, CastService::class.java)
             .setAction(CastService.ACTION_START)
             .putExtra(CastService.EXTRA_RESULT_CODE, resultCode)
@@ -184,6 +190,7 @@ class StudioActivity : Activity() {
             .putExtra(CastService.EXTRA_API, share.first)
             .putExtra(CastService.EXTRA_TOKEN, share.second)
             .putExtra(CastService.EXTRA_MIC, mic)
+            .putExtra(CastService.EXTRA_GUEST, pendingGuest)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc) else startService(svc)
         Toast.makeText(this, "Sharing your screen — switch to any app to show it.", Toast.LENGTH_LONG).show()
     }
@@ -215,6 +222,17 @@ class StudioActivity : Activity() {
         fun startShare(api: String, token: String, room: String) {
             if (!api.startsWith("https://")) return
             runOnUiThread { beginShare(api, token, room) }
+        }
+
+        @JavascriptInterface
+        fun startGuestShare(api: String, token: String) {
+            if (!api.startsWith("https://")) return
+            runOnUiThread { beginShare(api, token, "", guest = true) }
+        }
+
+        @JavascriptInterface
+        fun setMicMuted(muted: Boolean) {
+            CastService.setMicMuted(muted)
         }
 
         @JavascriptInterface
