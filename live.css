@@ -491,3 +491,4 @@ select.lv-input { appearance: auto; }
 .lv-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: #d4d7de; }
 .lv-steps a { font-weight: 600; }
 a.lv-btn.lg { text-decoration: none; }
+.lv-reconnect.info { background: var(--brand); color: #fff; max-width: calc(100% - 32px); text-align: center; }
