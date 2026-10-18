@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=73b1908e';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=73b1908e';
-import { Media, DataLink, iceServers, setAuthToken, whenOpen } from './rtc.js?v=73b1908e';
+import { icon } from './icons.js?v=7f7aad11';
+import { api, ApiError, endpoint, supabaseClient } from './api.js?v=7f7aad11';
+import { Media, DataLink, pullTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=7f7aad11';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -475,7 +475,7 @@ function goLive() {
   renderAll();
   every(1000, tickTimer);
   if (!IS_HOST) every(4000, adaptScreen);
-  every(4000, screenWatchdog);
+  every(4000, mediaWatchdog);
   window.__lv = S; // handy for debugging from the console
   S.debug = { setScreenPaused };
 }
@@ -886,20 +886,17 @@ function reconcilePulls() {
     // Everyone gets the full-quality screen; adaptScreen() drops a viewer to
     // the lighter layer only while their own connection is losing data.
     if (w.kind === 'screen' && !w.meta.noRid) entry.rid = S.screenQ.rid;
-    // After a pause the screen comes back on a fresh connection: pulling the
-    // same track again on the old one fails.
-    entry.media = w.kind === 'screen' && S.screenMedia ? S.screenMedia : S.media;
-    entry.handle = entry.media.pull(w.meta, {
+    entry.handle = pullTrack(w.meta, {
       rid: entry.rid,
       onTrack: (track) => {
         entry.track = track;
+        entry.at = Date.now();
         if (track.kind === 'audio') {
           entry.audio?.remove();
           const el = h('audio', { autoplay: true });
           el.srcObject = new MediaStream([track]);
           if (S.sinkId && el.setSinkId) el.setSinkId(S.sinkId).catch(() => {});
           $('#lv-audio-sink').append(el);
-          if (entry.owner === HOST_ID && entry.kind === 'mic') el.muted = !S.view?.host?.micOn;
           el.play().catch(() => $('#lv-audio-unlock').classList.remove('hidden'));
           entry.audio = el;
         }
@@ -923,7 +920,7 @@ function adaptScreen() {
   const entry = [...S.pulls.values()].find((p) => p.kind === 'screen' && p.rid && p.track);
   const mic = [...S.pulls.values()].find((p) => p.kind === 'mic' && p.track);
   const watch = q.paused ? mic : entry;
-  const pc = watch?.media?.pc;
+  const pc = watch?.handle.pc;
   if (!pc) return;
   pc.getStats(watch.track).then((report) => {
     let got = 0, lost = 0;
@@ -953,19 +950,37 @@ function adaptScreen() {
   }).catch(() => {});
 }
 
-// Safety net (presenter and attendees): a screen that still hasn't shown a
-// picture after 12 s is asked for again on a fresh connection.
-function screenWatchdog() {
-  let redo = false;
-  for (const [key, p] of S.pulls) {
-    if (p.kind !== 'screen' || p.track || Date.now() - p.at < 12000) continue;
-    p.handle.stop();
-    S.pulls.delete(key);
-    redo = true;
+// Safety net (presenter and attendees), every 4 s:
+//  - a screen or voice that still hasn't arrived 10 s after asking is asked
+//    for again on a fresh connection;
+//  - a voice that should be on (speaker unmuted) but has received no packets
+//    for ~8 s is reconnected the same way.
+function mediaWatchdog() {
+  const now = Date.now();
+  for (const p of S.pulls.values()) {
+    if (p.kind !== 'screen' && p.kind !== 'mic') continue;
+    if (!p.track) {
+      if (now - p.at > 10000) { p.at = now; p.handle.restart(); }
+      continue;
+    }
+    if (p.kind !== 'mic' || !speakerOn(p.owner)) { p.silent = 0; continue; }
+    const pc = p.handle.pc;
+    if (!pc) continue;
+    pc.getStats(p.track).then((report) => {
+      let got = 0;
+      report.forEach((r) => { if (r.type === 'inbound-rtp') got += r.packetsReceived || 0; });
+      p.silent = got > (p.got || 0) ? 0 : (p.silent || 0) + 1;
+      p.got = got;
+      if (p.silent >= 2 && now - p.at > 10000) { p.silent = 0; p.got = 0; p.at = Date.now(); p.track = null; p.handle.restart(); }
+    }).catch(() => {});
   }
-  if (!redo) return;
-  S.screenMedia = new Media();
-  reconcilePulls();
+}
+
+function speakerOn(owner) {
+  const v = S.view;
+  if (!v) return false;
+  if (owner === HOST_ID) return !!v.host?.micOn;
+  return !!v.stage?.find((s) => s.id === owner)?.micOn;
 }
 
 function resetScreenCounters() {
@@ -983,10 +998,7 @@ function setScreenPaused(paused) {
   S.screenQ.paused = paused;
   S.screenQ.rid = 'h';
   resetScreenCounters();
-  if (!paused) {
-    S.screenMedia = new Media();
-    toast('Showing the screen again', 'success');
-  }
+  if (!paused) toast('Showing the screen again', 'success');
   reconcilePulls();
 }
 
@@ -1051,10 +1063,11 @@ function toggleCastMic() {
   afterLocalChange();
 }
 
-// Viewers: silence the presenter's audio while they're muted.
+// Viewers: when the presenter unmutes, make sure their player is running
+// (the sound itself is silenced at the source while muted).
 function applyHostMute() {
-  const on = !!S.view?.host?.micOn;
-  for (const p of S.pulls.values()) if (p.owner === HOST_ID && p.kind === 'mic' && p.audio) p.audio.muted = !on;
+  if (!S.view?.host?.micOn) return;
+  for (const p of S.pulls.values()) if (p.owner === HOST_ID && p.kind === 'mic' && p.audio?.paused) p.audio.play().catch(() => {});
 }
 
 function toggleMic() {

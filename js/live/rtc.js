@@ -5,8 +5,8 @@
 // All SFU calls go through the Supabase Edge Function proxy, which holds the
 // Cloudflare secret. It hands back a signature for every session we create;
 // this module attaches it to later calls on that session.
-import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=73b1908e';
-import { endpoint } from './api.js?v=73b1908e';
+import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=7f7aad11';
+import { endpoint } from './api.js?v=7f7aad11';
 
 const SFU = () => `${endpoint()}/sfu`;
 const sigs = new Map();
@@ -48,8 +48,8 @@ export class Media {
   constructor() {
     this.pt = new PartyTracks({ prefix: SFU() });
     this.state$ = this.pt.peerConnectionState$;
-    this.pc = null; // for reading receive stats (see adaptScreen in app.js)
-    this.pt.peerConnection$.subscribe((pc) => { this.pc = pc; });
+    this.pc = null; // for reading receive stats and closing
+    this.pcSub = this.pt.peerConnection$.subscribe((pc) => { this.pc = pc; });
   }
 
   /**
@@ -66,30 +66,50 @@ export class Media {
     };
   }
 
-  /** Pull a remote track; onTrack receives the MediaStreamTrack. */
-  pull(meta, { rid, onTrack } = {}) {
-    const rid$ = new BehaviorSubject(rid);
-    let sub = null;
-    let stopped = false;
-    let tries = 0;
-    // A track that was announced a moment before it is really flowing gets
-    // refused; ask again (1.5 s, 3 s, … up to ~1 minute) instead of giving up.
-    const start = () => {
-      sub = this.pt.pull(of({ sessionId: meta.sessionId, trackName: meta.trackName, location: 'remote' }), rid ? { simulcast: { preferredRid$: rid$ } } : {})
-        .subscribe({
-          next: (t) => onTrack?.(t),
-          error: (e) => {
-            console.warn('pull', e);
-            if (!stopped && tries < 8) setTimeout(() => { if (!stopped) start(); }, 1500 * ++tries);
-          },
-        });
-    };
-    start();
-    return {
-      setRid: (r) => { if (rid) rid$.next(r); },
-      stop: () => { stopped = true; sub?.unsubscribe(); },
-    };
+  /** Close this connection for good. */
+  close() {
+    this.pcSub?.unsubscribe();
+    try { this.pc?.close(); } catch { /* already closed */ }
   }
+}
+
+/**
+ * Receive one remote track on its own connection (its own SFU session).
+ * Keeping every received track separate means opening or closing one can
+ * never break another, and a connection that fails or goes quiet is simply
+ * replaced: restart() (or any error) tears it down and pulls again on a
+ * fresh one, backing off 1.5 s, 3 s, … up to 10 s.
+ */
+export function pullTrack(meta, { rid, onTrack } = {}) {
+  const rid$ = new BehaviorSubject(rid);
+  let media = null;
+  let sub = null;
+  let stopped = false;
+  let tries = 0;
+  let timer = null;
+  const teardown = () => { sub?.unsubscribe(); sub = null; media?.close(); media = null; };
+  const start = () => {
+    if (stopped) return;
+    media = new Media();
+    sub = media.pt.pull(of({ sessionId: meta.sessionId, trackName: meta.trackName, location: 'remote' }), rid ? { simulcast: { preferredRid$: rid$ } } : {})
+      .subscribe({
+        next: (t) => { tries = 0; onTrack?.(t); },
+        error: (e) => { console.warn('pull', e); restart(); },
+      });
+  };
+  const restart = () => {
+    if (stopped) return;
+    teardown();
+    clearTimeout(timer);
+    timer = setTimeout(start, Math.min(1500 * ++tries, 10000));
+  };
+  start();
+  return {
+    setRid: (r) => { if (rid) rid$.next(r); },
+    restart,
+    stop: () => { stopped = true; clearTimeout(timer); teardown(); },
+    get pc() { return media?.pc || null; },
+  };
 }
 
 // ── Data ───────────────────────────────────────────────────
