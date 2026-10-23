@@ -7,9 +7,9 @@
 // attendee's messages on their private "up" channel, applies the rules
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
-import { icon } from './icons.js?v=b85381e6';
-import { api, ApiError, endpoint, supabaseClient, keep as persist } from './api.js?v=b85381e6';
-import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=b85381e6';
+import { icon } from './icons.js?v=26d496c2';
+import { api, ApiError, endpoint, supabaseClient, keep as persist } from './api.js?v=26d496c2';
+import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=26d496c2';
 
 const CFG = window.EEM26_CONFIG || {};
 const IS_HOST = document.body.dataset.role === 'host';
@@ -1240,6 +1240,7 @@ function applyCast(cast) {
     S.castMuted = false;
     if (S.castMic && S.local.mic) media(async () => releaseMic()); // the app's mic takes over
     toast('Your phone screen is live for everyone', 'success');
+    if (S.recPending) { S.recPending = false; try { NATIVE?.startRecording?.(); } catch { /* app too old */ } }
     afterLocalChange();
     reconcilePulls();
   } else if (cur) {
@@ -1405,9 +1406,25 @@ function clock(sec) {
 // The app records the shared screen and the presenter's voice to the phone's
 // Movies/EEM26 folder. Attendees see a REC sign while it runs.
 function toggleRecording() {
+  if (!NATIVE.startRecording) {
+    modal({
+      title: 'Update EEM26 Live to record',
+      body: h('p', {}, 'Recording needs the latest EEM26 Live app (2.7). Close the app completely, open it again and tap “Update now”.'),
+      actions: [{ label: 'OK' }],
+    });
+    return;
+  }
   try {
-    if (S.rec) NATIVE.stopRecording();
-    else NATIVE.startRecording();
+    if (S.rec) { S.recPending = false; NATIVE.stopRecording(); }
+    else if (S.local.screen?.cast) NATIVE.startRecording();
+    else if (S.recPending) { S.recPending = false; toast('Recording cancelled', 'info'); renderControls(); }
+    else {
+      // Not sharing yet: share first, recording starts as soon as the screen is live.
+      S.recPending = true;
+      toast('Share your screen — recording starts as soon as it’s live', 'info', 5000);
+      renderControls();
+      if (!NATIVE.isSharing?.()) toggleScreen();
+    }
   } catch (e) { toast(`Recording: ${e.message}`, 'error'); }
 }
 
@@ -1640,8 +1657,8 @@ function renderControls() {
     const on = !!l.screen;
     center.append(ctrl('screen', on ? 'screenOff' : 'screen', on ? 'Stop share' : 'Share screen', { active: on, on: toggleScreen }));
   }
-  if (IS_HOST && NATIVE?.startRecording && (S.rec || l.screen?.cast)) {
-    center.append(ctrl('rec', S.rec ? 'recordStop' : 'record', S.rec ? 'Stop recording' : 'Record', { active: !!S.rec, on: toggleRecording }));
+  if (IS_HOST && NATIVE) {
+    center.append(ctrl('rec', S.rec ? 'recordStop' : 'record', S.rec ? 'Stop recording' : S.recPending ? 'Starting…' : 'Record', { active: !!S.rec || S.recPending, on: toggleRecording }));
   }
   if (!IS_HOST && s.hands) {
     const up = myHandUp();
