@@ -71,9 +71,21 @@ class CastService : Service() {
 
         @Volatile private var instance: CastService? = null
 
+        /** Recording: called on the main thread with {on, saved?, error?} JSON. */
+        var recListener: ((String) -> Unit)? = null
+
         /** Mute or unmute the shared microphone without stopping the share. */
         fun setMicMuted(muted: Boolean) {
-            instance?.audioTrack?.setEnabled(!muted)
+            instance?.let { it.micMuted = muted; it.audioTrack?.setEnabled(!muted) }
+        }
+
+        val recording: Boolean get() = instance?.recorder != null
+
+        /** Starts recording the share; returns why it can't, or null. */
+        fun startRecording(): String? = instance?.beginRecording() ?: "Share your screen from the app first, then press Record."
+
+        fun stopRecording() {
+            instance?.let { svc -> Thread { svc.endRecording() }.start() }
         }
     }
 
@@ -88,6 +100,10 @@ class CastService : Service() {
     private var pc: PeerConnection? = null
     private var signaling: Signaling? = null
     @Volatile private var audioTrack: org.webrtc.AudioTrack? = null
+    @Volatile private var micMuted = false
+    @Volatile private var recorder: Recorder? = null
+    private var videoTrack: org.webrtc.VideoTrack? = null
+    private var size = 0 to 0
     private val connected = CountDownLatch(1)
     private var guest = false
 
@@ -150,6 +166,8 @@ class CastService : Service() {
             .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
             .setUseHardwareAcousticEchoCanceler(true)
             .setUseHardwareNoiseSuppressor(false)
+            // the presenter's voice also goes into the recording, if one is running
+            .setSamplesReadyCallback { s -> recorder?.onAudio(s, micMuted) }
             .createAudioDeviceModule()
         val factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(adm)
@@ -170,8 +188,10 @@ class CastService : Service() {
         val videoSource = factory.createVideoSource(true)
         capturer.initialize(helper, ctx, videoSource.capturerObserver)
         val (w, h) = captureSize()
+        size = w to h
         capturer.startCapture(w, h, 15)
         val videoTrack = factory.createVideoTrack("screen", videoSource)
+        this.videoTrack = videoTrack
         val audioTrack = if (mic) factory.createAudioTrack("mic", factory.createAudioSource(voiceConstraints())) else null
         this.audioTrack = audioTrack
 
@@ -331,6 +351,7 @@ class CastService : Service() {
             stopping = true
         }
         Thread {
+            endRecording()
             if (!guest) try { signaling?.takeIf { it.sessionId.isNotEmpty() }?.stopped() } catch (_: Exception) {}
             try { capturer?.stopCapture() } catch (_: Exception) {}
             try { capturer?.dispose() } catch (_: Exception) {}
@@ -338,7 +359,7 @@ class CastService : Service() {
             try { helper?.dispose() } catch (_: Exception) {}
             try { factory?.dispose() } catch (_: Exception) {}
             try { egl?.release() } catch (_: Exception) {}
-            capturer = null; pc = null; helper = null; factory = null; egl = null; audioTrack = null
+            capturer = null; pc = null; helper = null; factory = null; egl = null; audioTrack = null; videoTrack = null
             if (instance === this) instance = null
             if (guest) main.post { shareListener?.invoke(null) }
             worker?.interrupt()
@@ -350,6 +371,46 @@ class CastService : Service() {
                 stopSelf()
             }
         }.start()
+    }
+
+    // ── Recording ──
+    @Synchronized
+    private fun beginRecording(): String? {
+        if (recorder != null) return null
+        if (guest) return "Only the presenter can record the class."
+        val track = videoTrack
+        val base = egl
+        if (stopping || track == null || base == null || connected.count > 0) return "Wait until your screen is live, then press Record."
+        return try {
+            val r = Recorder(applicationContext, base.eglBaseContext, size.first, size.second, audioTrack != null)
+            recorder = r
+            track.addSink(r)
+            refreshNotification()
+            main.post { recListener?.invoke(JSONObject().put("on", true).toString()) }
+            null
+        } catch (e: Exception) {
+            "Couldn’t start recording: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    /** Finishes the recording (blocks until the file is written). */
+    private fun endRecording() {
+        val r = synchronized(this) { recorder.also { recorder = null } } ?: return
+        try { videoTrack?.removeSink(r) } catch (_: Exception) {}
+        r.stop { saved, error ->
+            val json = JSONObject().put("on", false)
+            if (saved != null) json.put("saved", saved)
+            if (error != null) json.put("error", error)
+            main.post { recListener?.invoke(json.toString()) }
+        }
+        if (!stopping) refreshNotification()
+    }
+
+    private fun refreshNotification() {
+        main.post {
+            if (!running || stopping) return@post
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification())
+        }
     }
 
     private fun notification(): Notification {
@@ -368,8 +429,8 @@ class CastService : Service() {
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
         else @Suppress("DEPRECATION") Notification.Builder(this)
         return b.setSmallIcon(android.R.drawable.presence_video_online)
-            .setContentTitle("Sharing your screen with the class")
-            .setContentText("Everyone in the live class can see your screen.")
+            .setContentTitle(if (recorder != null) "Sharing and recording your screen" else "Sharing your screen with the class")
+            .setContentText(if (recorder != null) "Recording to Movies/EEM26 — stop it from the class screen." else "Everyone in the live class can see your screen.")
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Stop sharing", stop).build())

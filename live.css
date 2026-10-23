@@ -545,3 +545,24 @@ a.lv-btn.lg { text-decoration: none; }
 .lv-status.info { color: #ddd6fe; border-color: rgba(124, 92, 224, .5); background: var(--brand-soft); }
 .lv-spin.sm { width: 11px; height: 11px; border-width: 2px; }
 .lv-hand-badge { color: var(--amber); display: inline-flex; }
+
+/* Recording sign (presenter records from the EEM26 Live app) */
+.lv-rec {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #fecaca; background: rgba(239, 68, 68, .18);
+  border: 1px solid rgba(239, 68, 68, .5);
+  font-weight: 800; font-size: 11px; letter-spacing: .8px;
+  padding: 5px 10px; border-radius: 999px;
+}
+.lv-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: lv-pulse 1s ease-in-out infinite; }
+#ctl-rec.active .lv-ctrl-ico { color: #ef4444; }
+
+/* Viewer's name drifting over the class screen (discourages recording) */
+.lv-wm {
+  position: absolute; z-index: 3; pointer-events: none; user-select: none;
+  color: rgba(255, 255, 255, .22); font: 600 13px/1 var(--display, sans-serif);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35); white-space: nowrap;
+  transform: rotate(-12deg); transition: left 3s ease, top 3s ease;
+}
+.lv-stage video { -webkit-touch-callout: none; user-select: none; }
+@media (max-width: 480px) { .lv-rec .lv-timer { display: none; } }

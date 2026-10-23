@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -18,6 +20,7 @@ import android.provider.MediaStore
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -30,6 +33,9 @@ import java.io.File
  * native extras exposed to the page as `window.EEM26App`:
  *  - startShare / stopShare: share the phone screen via [CastService]
  *  - saveText: save the chat transcript to Downloads
+ *  - startRecording / stopRecording: record the presenter's share to Movies/EEM26
+ *  - classLive: keeps the app running in the background during a class
+ *    ([ClassService]) and brings the person back into it if Android closed it
  *
  * Unlike a Chrome tab, this page keeps running while the presenter shows
  * other apps (the screen-sharing foreground service keeps the app alive and
@@ -39,6 +45,9 @@ class StudioActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
+        /** Reopen this exact page (back into a class Android closed in the background). */
+        const val EXTRA_URL = "url"
+        private const val LIVE_MS = 12 * 3600_000L
         const val SITE = "https://ecosystemexpantion.github.io/Google-Meet/"
         const val PAGE_HOST = "host.html"
         const val PAGE_JOIN = "index.html"
@@ -48,6 +57,22 @@ class StudioActivity : Activity() {
         private const val PREFS = "studio"
 
         fun lastPage(ctx: Context): String? = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("page", null)
+
+        /** The class page someone was in (and didn't leave) in the last 12 hours. */
+        fun liveUrl(ctx: Context): String? {
+            val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val url = p.getString("liveUrl", null) ?: return null
+            return if (System.currentTimeMillis() - p.getLong("liveAt", 0) < LIVE_MS && url.startsWith(SITE)) url else null
+        }
+
+        private fun setLive(ctx: Context, url: String?) {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
+                if (url == null) remove("liveUrl") else putString("liveUrl", url).putLong("liveAt", System.currentTimeMillis())
+            }.apply()
+        }
+
+        /** Attendee pages can't be screenshotted or screen-recorded; the presenter's can (they share it). */
+        private fun isPresenterPage(url: String?) = url != null && url.removePrefix(SITE).startsWith("host")
     }
 
     private lateinit var web: WebView
@@ -61,6 +86,12 @@ class StudioActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val page = intent.getStringExtra(EXTRA_PAGE) ?: PAGE_HOST
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("page", page).apply()
+        val startUrl = intent.getStringExtra(EXTRA_URL)?.takeIf { it.startsWith(SITE) } ?: (SITE + page)
+        protect(startUrl)
+        // Other apps (screen recorders) can't capture the class sound.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            (getSystemService(Context.AUDIO_SERVICE) as AudioManager).setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE)
+        }
 
         web = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#0E0F12"))
@@ -69,12 +100,27 @@ class StudioActivity : Activity() {
             settings.mediaPlaybackRequiresUserGesture = false
             settings.userAgentString = settings.userAgentString + " EEM26App/2"
             addJavascriptInterface(Bridge(), "EEM26App")
+            // Keep the page's process alive while the app is in the background.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             webViewClient = object : WebViewClient() {
                 // Stay in the app for the class site; open everything else in the browser.
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
                     if (url.startsWith(SITE)) return false
                     try { startActivity(Intent(Intent.ACTION_VIEW, request.url)) } catch (_: Exception) {}
+                    return true
+                }
+
+                override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                    protect(url)
+                }
+
+                // Android stopped the page in the background: reopen it (the
+                // class page then rejoins by itself) instead of closing the app.
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    val url = liveUrl(this@StudioActivity) ?: (SITE + page)
+                    finish()
+                    startActivity(Intent(this@StudioActivity, StudioActivity::class.java).putExtra(EXTRA_PAGE, page).putExtra(EXTRA_URL, url))
                     return true
                 }
             }
@@ -87,7 +133,13 @@ class StudioActivity : Activity() {
         setContentView(web)
         // An attendee's phone share: hand the track to the page, which tells the presenter.
         CastService.shareListener = { json -> web.evaluateJavascript("window.__eem26Share && window.__eem26Share(${json ?: "null"})", null) }
-        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(SITE + page)
+        CastService.recListener = { json -> web.evaluateJavascript("window.__eem26Rec && window.__eem26Rec($json)", null) }
+        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(startUrl)
+    }
+
+    private fun protect(url: String?) {
+        if (isPresenterPage(url)) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -100,6 +152,8 @@ class StudioActivity : Activity() {
 
     override fun onDestroy() {
         CastService.shareListener = null
+        CastService.recListener = null
+        ClassService.stop(this) // the page is gone; reopening the app brings it back (liveUrl)
         web.destroy()
         super.onDestroy()
     }
@@ -111,6 +165,7 @@ class StudioActivity : Activity() {
             .setTitle("Leave the class?")
             .setMessage("You can come back any time from the EEM26 Live app.")
             .setPositiveButton("Leave") { _, _ ->
+                setLive(this, null)
                 @Suppress("DEPRECATION") super.onBackPressed()
             }
             .setNegativeButton("Stay", null)
@@ -250,5 +305,32 @@ class StudioActivity : Activity() {
 
         @JavascriptInterface
         fun isSharing(): Boolean = CastService.running
+
+        /** The page joined (true) or left/ended (false) a live class. */
+        @JavascriptInterface
+        fun classLive(live: Boolean) {
+            runOnUiThread {
+                if (live) {
+                    setLive(this@StudioActivity, web.url)
+                    ClassService.start(this@StudioActivity)
+                } else {
+                    setLive(this@StudioActivity, null)
+                    ClassService.stop(this@StudioActivity)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun startRecording() {
+            val error = CastService.startRecording() ?: return
+            val json = org.json.JSONObject().put("on", false).put("error", error)
+            runOnUiThread { web.evaluateJavascript("window.__eem26Rec && window.__eem26Rec($json)", null) }
+        }
+
+        @JavascriptInterface
+        fun stopRecording() = CastService.stopRecording()
+
+        @JavascriptInterface
+        fun isRecording(): Boolean = CastService.recording
     }
 }

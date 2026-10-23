@@ -20,10 +20,10 @@ async function page(opts = {}) {
 }
 
 // Presenter on an Android phone (no getDisplayMedia in phone browsers)
-const host = await page({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36' });
+let host = await page({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36' });
 await host.addInitScript(() => { delete MediaDevices.prototype.getDisplayMedia; });
 await host.goto(`${BASE}/host.html`);
-await host.evaluate(() => sessionStorage.setItem('eem26_host_pw', 'test'));
+await host.evaluate(() => localStorage.setItem('eem26_host_pw', JSON.stringify({ v: 'test', exp: Date.now() + 3600e3 })));
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
 await host.click('#pj-start');
 await host.waitForSelector('[data-state=live]');
@@ -129,6 +129,23 @@ await check('a very weak connection pauses the screen but keeps the voice, then 
 });
 
 // ── Presenter comes back: the studio rejoins on its own ──
+// Android closed the app meanwhile: a brand-new page (no sessionStorage), now
+// inside the EEM26 Live app, must still be signed in and rejoin by itself.
+const hostCtx = host.context();
+await host.close();
+host = await hostCtx.newPage();
+await host.route('https://cdn.jsdelivr.net/npm/@supabase/**', (r) => r.fulfill({ body: '' }));
+host.on('pageerror', (e) => console.error('pageerror', e.message));
+await host.addInitScript(() => {
+  delete MediaDevices.prototype.getDisplayMedia;
+  window.EEM26App = {
+    startShare() {}, stopShare() {}, isSharing: () => false, setMicMuted() {},
+    classLive(v) { window.__classLive = v; },
+    isRecording: () => false,
+    startRecording() { setTimeout(() => window.__eem26Rec({ on: true }), 50); },
+    stopRecording() { setTimeout(() => window.__eem26Rec({ on: false, saved: 'Movies/EEM26/EEM26 class.mp4' }), 50); },
+  };
+});
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
 await check('presenter studio rejoins automatically', () => host.waitForSelector('[data-state=live]', { timeout: 20000 }));
 await check('attendees reconnect to the presenter (banner clears, chat back)', async () => {
@@ -136,6 +153,25 @@ await check('attendees reconnect to the presenter (banner clears, chat back)', a
   await guest.waitForSelector('#lv-chat-input:not([disabled])', { timeout: 5000 });
 });
 await check('presenter sees the phone share again', () => host.waitForSelector('.lv-presenting video', { timeout: 15000 }));
+await check('the app is told the class is live (keeps running in the background)', () => host.waitForFunction(() => window.__classLive === true, null, { timeout: 5000 }));
+
+// ── Recording from the app ──
+await check('presenter can start recording; attendees see REC', async () => {
+  await host.click('#ctl-rec');
+  await host.waitForSelector('#lv-rec:not(.hidden)', { timeout: 5000 });
+  await host.waitForSelector('#ctl-rec[aria-pressed=true]', { timeout: 5000 });
+  await guest.waitForSelector('#lv-rec:not(.hidden)', { timeout: 10000 });
+});
+await check('presenter stops recording; REC goes away and the file is reported', async () => {
+  await host.click('#ctl-rec');
+  await host.waitForSelector('.lv-toast:has-text("Recording saved")', { timeout: 5000 });
+  await guest.waitForSelector('#lv-rec.hidden', { state: 'attached', timeout: 10000 });
+});
+await check('attendees see their name drifting over the screen; no picture-in-picture', async () => {
+  const wm = await guest.textContent('#lv-wm');
+  if (!wm.includes('Ada')) throw new Error(`watermark "${wm}"`);
+  if (!(await guest.evaluate(() => document.querySelector('#lv-main video').disablePictureInPicture))) throw new Error('PiP allowed');
+});
 
 // ── Presenter mutes while the app provides the microphone ──
 const hostMicOn = () => window.__lv.view.host.micOn;

@@ -21,8 +21,12 @@ class HomeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Coming back to the app while a class is open: go straight to it.
-        if (savedInstanceState == null && StudioActivity.lastPage(this) != null && CastService.running) {
-            openStudio(StudioActivity.lastPage(this)!!)
+        // Also after Android closed the app in the background mid-class.
+        val live = StudioActivity.liveUrl(this)
+        if (savedInstanceState == null && StudioActivity.lastPage(this) != null && (CastService.running || live != null)) {
+            startActivity(Intent(this, StudioActivity::class.java)
+                .putExtra(StudioActivity.EXTRA_PAGE, StudioActivity.lastPage(this))
+                .putExtra(StudioActivity.EXTRA_URL, live))
         }
         buildUi()
     }

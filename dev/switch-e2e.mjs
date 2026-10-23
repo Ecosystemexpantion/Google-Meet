@@ -17,7 +17,7 @@ await p.addInitScript(() => {
   };
 });
 await p.goto(`${BASE}/host.html`);
-await p.evaluate(() => sessionStorage.setItem('eem26_host_pw', 'test'));
+await p.evaluate(() => localStorage.setItem('eem26_host_pw', JSON.stringify({ v: 'test', exp: Date.now() + 3600e3 })));
 const room = `Switch${Date.now().toString(36)}`;
 await p.goto(`${BASE}/host-room.html?room=${room}`);
 await p.uncheck('#pj-mic');

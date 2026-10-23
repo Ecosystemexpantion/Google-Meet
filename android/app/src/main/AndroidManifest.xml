@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- in-app updates: open Android's installer for a newer EEM26 Live -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -21,6 +22,7 @@
 
     <application
         android:allowBackup="false"
+        android:allowAudioPlaybackCapture="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="EEM26 Live"
@@ -59,5 +61,11 @@
             android:name=".CastService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone" />
+
+        <!-- Keeps a live class running while you're in other apps -->
+        <service
+            android:name=".ClassService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback|microphone" />
     </application>
 </manifest>

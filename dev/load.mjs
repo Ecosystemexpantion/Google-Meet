@@ -21,7 +21,7 @@ async function page(viewport = { width: 1440, height: 860 }) {
 
 const host = await page();
 await host.goto(`${BASE}/host.html`);
-await host.evaluate(() => sessionStorage.setItem('eem26_host_pw', 'test'));
+await host.evaluate(() => localStorage.setItem('eem26_host_pw', JSON.stringify({ v: 'test', exp: Date.now() + 3600e3 })));
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
 await host.click('#pj-start');
 await host.waitForSelector('.lv-app[data-state="live"]');
