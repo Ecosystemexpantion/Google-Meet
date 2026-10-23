@@ -566,3 +566,5 @@ a.lv-btn.lg { text-decoration: none; }
 }
 .lv-stage video { -webkit-touch-callout: none; user-select: none; }
 @media (max-width: 480px) { .lv-rec .lv-timer { display: none; } }
+.lv-rec.paused { color: #fde68a; background: rgba(245, 165, 36, .14); border-color: rgba(245, 165, 36, .45); }
+.lv-rec.paused .lv-rec-dot { background: #f5a524; box-shadow: none; animation: none; }

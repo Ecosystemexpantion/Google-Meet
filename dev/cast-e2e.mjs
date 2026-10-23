@@ -141,9 +141,24 @@ await host.addInitScript(() => {
   window.EEM26App = {
     startShare() {}, stopShare() {}, isSharing: () => false, setMicMuted() {},
     classLive(v) { window.__classLive = v; },
-    isRecording: () => false,
-    startRecording() { setTimeout(() => window.__eem26Rec({ on: true }), 50); },
-    stopRecording() { setTimeout(() => window.__eem26Rec({ on: false, saved: 'Movies/EEM26/EEM26 class.mp4' }), 50); },
+    // The recording lives in the app, so it survives the page (kept in localStorage here).
+    get rec() { try { return JSON.parse(localStorage.getItem('__fakeRec')); } catch { return null; } },
+    set rec(v) { localStorage.setItem('__fakeRec', JSON.stringify(v)); },
+    state() { const r = this.rec; return r ? { on: true, paused: r.paused, ms: r.paused ? r.ms : r.ms + Date.now() - r.since } : { on: false }; },
+    isRecording() { return !!this.rec; },
+    recordingState() { return JSON.stringify(this.state()); },
+    startRecording() {
+      this.rec = { paused: false, ms: 0, since: Date.now() };
+      setTimeout(() => window.__eem26Rec(this.state()), 50);
+      // like app 2.7: wrongly reports an error as well
+      setTimeout(() => window.__eem26Rec({ on: false, error: 'Share your screen from the app first, then press Record.' }), 80);
+    },
+    setRecordingPaused(p) {
+      const s = this.state();
+      this.rec = { paused: p, ms: s.ms, since: Date.now() };
+      setTimeout(() => window.__eem26Rec(this.state()), 50);
+    },
+    stopRecording() { this.rec = null; window.__stoppedRec = true; setTimeout(() => window.__eem26Rec({ on: false, saved: 'Movies/EEM26/EEM26 class.mp4' }), 50); },
   };
 });
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);
@@ -162,10 +177,29 @@ await check('presenter can start recording; attendees see REC', async () => {
   await host.waitForSelector('#ctl-rec[aria-pressed=true]', { timeout: 5000 });
   await guest.waitForSelector('#lv-rec:not(.hidden)', { timeout: 10000 });
 });
+await check('presenter can pause and resume; attendees see it paused', async () => {
+  await host.click('#ctl-recpause');
+  await guest.waitForSelector('#lv-rec.paused:has-text("REC PAUSED")', { timeout: 10000 });
+  await host.click('#ctl-recpause');
+  await guest.waitForSelector('#lv-rec:not(.paused):not(.hidden)', { timeout: 10000 });
+});
+await check('after leaving and coming back, the recording controls are still there', async () => {
+  await host.reload();
+  await host.waitForSelector('[data-state=live]', { timeout: 20000 });
+  await host.waitForSelector('#lv-rec:not(.hidden)', { timeout: 5000 });
+  await host.waitForSelector('#ctl-rec:has-text("Stop rec")', { timeout: 5000 });
+  await host.waitForSelector('.lv-presenting video', { timeout: 15000 });
+});
 await check('presenter stops recording; REC goes away and the file is reported', async () => {
   await host.click('#ctl-rec');
   await host.waitForSelector('.lv-toast:has-text("Recording saved")', { timeout: 5000 });
-  await guest.waitForSelector('#lv-rec.hidden', { state: 'attached', timeout: 10000 });
+  // (the attendee first reconnects to the reloaded presenter page)
+  await guest.waitForSelector('#lv-rec.hidden', { state: 'attached', timeout: 45000 });
+});
+await check('stopping the recording keeps the screen shared', async () => {
+  await host.waitForTimeout(2000);
+  await host.waitForSelector('.lv-presenting video', { timeout: 5000 });
+  await guest.waitForFunction(() => document.querySelector('#lv-main video')?.videoWidth > 0, null, { timeout: 5000 });
 });
 await check('attendees see their name drifting over the screen; no picture-in-picture', async () => {
   const wm = await guest.textContent('#lv-wm');
