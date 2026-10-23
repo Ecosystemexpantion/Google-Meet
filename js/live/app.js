@@ -8,7 +8,7 @@
 // (chat mode, mutes, who may share) and broadcasts the result to everyone on
 // its "room" channel. Attendees only ever see what the presenter relays.
 import { icon } from './icons.js?v=__BUILD__';
-import { api, ApiError, endpoint, supabaseClient } from './api.js?v=__BUILD__';
+import { api, ApiError, endpoint, supabaseClient, keep as persist } from './api.js?v=__BUILD__';
 import { DataLink, pullTrack, pushTrack, iceServers, setAuthToken, whenOpen } from './rtc.js?v=__BUILD__';
 
 const CFG = window.EEM26_CONFIG || {};
@@ -37,6 +37,7 @@ const S = {
   roomCh: null,             // presenter: local "room" channel; attendee: remote subscription
   upCh: null,               // attendee: local "up" channel
   hostDataSession: null,
+  rec: null,                // presenter: { at } while the app records the class
   settings: { ...DEFAULT_SETTINGS },
   startedAt: null,
   view: null,               // last class snapshot (see hostSnapshot())
@@ -224,6 +225,7 @@ function hostSnapshot() {
     blocked: online.filter((p) => p.blocked).map((p) => p.identity),
     roster: S.settings.showPeople ? online.slice(0, 300).map((p) => [p.identity, p.name.slice(0, 24)]) : null,
     poll: S.poll,
+    recording: !!S.rec,
   };
 }
 
@@ -263,6 +265,7 @@ function shell() {
       h('div', { class: 'lv-top-mid' },
         h('span', { class: 'lv-live', id: 'lv-live' }, h('span', { class: 'lv-dot' }), 'LIVE', h('span', { id: 'lv-timer', class: 'lv-timer' }, '00:00'))),
       h('div', { class: 'lv-top-right' },
+        h('span', { class: 'lv-rec hidden', id: 'lv-rec', title: 'This class is being recorded by the presenter' }, h('span', { class: 'lv-rec-dot' }), 'REC', h('span', { id: 'lv-rec-time', class: 'lv-timer' })),
         h('span', { class: 'lv-pill lv-status hidden', id: 'lv-status', role: 'status' }),
         h('span', { class: 'lv-pill hidden', id: 'lv-locked', title: 'Room is locked', html: `${icon('lock', 14)} Locked` }),
         IS_HOST ? h('button', { class: 'lv-pill lv-pill-btn', id: 'lv-hands-pill', title: 'Raised hands', onclick: () => openPanel('people'), html: `${icon('hand', 14)} <b id="lv-hands-count">0</b>` }) : null,
@@ -277,6 +280,7 @@ function shell() {
           h('div', { class: 'lv-pip hidden', id: 'lv-pip' }),
           h('div', { class: 'lv-stage-label hidden', id: 'lv-stage-label' }),
           h('div', { class: 'lv-reactions', id: 'lv-reactions', 'aria-hidden': 'true' }),
+          IS_HOST ? null : h('div', { class: 'lv-wm', id: 'lv-wm', 'aria-hidden': 'true' }),
           h('button', { class: 'lv-icon-btn lv-fs', title: 'Full screen', 'aria-label': 'Full screen', html: icon('maximize'), onclick: toggleFullscreen })),
         h('div', { class: 'lv-strip hidden', id: 'lv-strip' })),
       h('aside', { class: 'lv-side', id: 'lv-side', 'aria-label': 'Side panel' },
@@ -295,6 +299,8 @@ function shell() {
     h('div', { class: 'lv-toasts', id: 'lv-toasts', 'aria-live': 'polite' }),
     h('div', { id: 'lv-audio-sink', class: 'hidden' }));
   document.body.append(app);
+  // no "Save video as…" / picture-in-picture menu on the class screen
+  if (!IS_HOST) $('#lv-stage').addEventListener('contextmenu', (e) => e.preventDefault());
   buildChatPanel();
   buildPeoplePanel();
   if (IS_HOST) buildRoomPanel();
@@ -377,7 +383,7 @@ function showPrejoin() {
   const p = params();
 
   if (IS_HOST) {
-    const password = sessionStorage.getItem('eem26_host_pw');
+    const password = persist.get('eem26_host_pw');
     if (!password) { location.href = 'host.html'; return; }
     const qs = new URLSearchParams(location.search);
     const titleIn = h('input', { class: 'lv-input', id: 'pj-title', maxlength: 120, value: qs.get('title') || CFG.CLASS_TITLE || '', placeholder: 'Session title' });
@@ -395,7 +401,7 @@ function showPrejoin() {
         markSupabaseSession(room, true);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
-          sessionStorage.removeItem('eem26_host_pw');
+          persist.del('eem26_host_pw');
           location.href = 'host.html?e=1';
           return;
         }
@@ -415,7 +421,7 @@ function showPrejoin() {
       h('a', { class: 'lv-link', href: 'host.html' }, '← Back to your classes')));
     // Back from another app after Android closed this tab (or after a
     // connection reset): rejoin the class straight away.
-    if (sessionStorage.getItem('lv_host_live') === room) {
+    if (persist.get('lv_host_live') === room) {
       micIn.checked = false;
       btn.textContent = 'Rejoining your class…';
       setTimeout(() => btn.click(), 50);
@@ -439,6 +445,7 @@ function showPrejoin() {
       const res = await api('join', { room, name, id: p.pid });
       S.name = name;
       await startGuest(res, room);
+      persist.set('lv_guest_live', room);
     } catch (e) {
       btn.disabled = false; btn.textContent = 'Join class';
       if (e instanceof ApiError && (e.code === 'not_started' || e.code === 'locked')) {
@@ -465,7 +472,8 @@ function showPrejoin() {
     h('p', { class: 'lv-fine' }, 'Works in any modern browser on phone or computer. No download needed.')));
   if (p.name.length >= 2 && p.room) setTimeout(() => btn.focus(), 50);
   // Came from the class page with their name already entered: go straight in.
-  if (p.name.length >= 2 && p.room && new URLSearchParams(location.search).get('go')) setTimeout(attempt, 0);
+  // (or was in this class when the app/browser closed it in the background).
+  if (p.name.length >= 2 && p.room && (new URLSearchParams(location.search).get('go') || persist.get('lv_guest_live') === p.room)) setTimeout(attempt, 0);
 }
 
 function goLive() {
@@ -478,6 +486,10 @@ function goLive() {
   every(1000, tickTimer);
   if (!IS_HOST) every(4000, adaptScreen);
   every(4000, mediaWatchdog);
+  // In the app: keep the class running (and signed in) while in other apps.
+  try { NATIVE?.classLive?.(true); } catch { /* app too old */ }
+  if (IS_HOST) { try { if (NATIVE?.isRecording?.()) S.rec = { at: Date.now() }; } catch { /* app too old */ } }
+  else { moveWatermark(); every(20000, moveWatermark); }
   window.__lv = S; // handy for debugging from the console
   S.debug = { setScreenPaused };
 }
@@ -487,7 +499,7 @@ async function startHost(res, room, opts = {}) {
   S.token = res.token;
   S.room = room;
   setAuthToken(res.token);
-  sessionStorage.setItem('lv_host_live', room);
+  persist.set('lv_host_live', room);
   restoreHostState();
   S.settings = { ...S.settings, title: res.room.title || S.settings.title, locked: res.room.locked };
   S.startedAt = res.room.startedAt || Date.now();
@@ -1299,8 +1311,9 @@ function teardown() {
 function endClass(reason) {
   if (S.ended) return;
   S.ended = true;
-  if (!IS_HOST) sendUp({ t: 'bye' });
-  else sessionStorage.removeItem('lv_host_live'); // left or ended on purpose: no auto-rejoin
+  if (!IS_HOST) { sendUp({ t: 'bye' }); persist.del('lv_guest_live'); }
+  else persist.del('lv_host_live'); // left or ended on purpose: no auto-rejoin
+  try { NATIVE?.classLive?.(false); if (IS_HOST && S.rec) NATIVE?.stopRecording?.(); } catch { /* app too old */ }
   teardown();
   $('#lv-app').dataset.state = 'ended';
   showReconnect(false);
@@ -1336,7 +1349,7 @@ async function endForAll() {
   try { await api('host-update', { token: S.token, open: false }); } catch (e) { toast(`Could not end: ${e.message}`, 'error'); return false; }
   for (let i = 0; i < 3; i++) setTimeout(() => sendRoom({ t: 'end' }), i * 300);
   markSupabaseSession(S.room, false);
-  sessionStorage.removeItem(`lv_host_${S.room}`);
+  persist.del(`lv_host_${S.room}`);
   setTimeout(() => endClass('ended'), 1000);
   return true;
 }
@@ -1379,8 +1392,52 @@ function tickTimer() {
   const start = S.startedAt;
   if (!start) return;
   const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  $('#lv-timer').textContent = clock(sec);
+  if (S.rec) $('#lv-rec-time').textContent = clock(Math.floor((Date.now() - S.rec.at) / 1000));
+}
+
+function clock(sec) {
   const hh = Math.floor(sec / 3600); const mm = Math.floor((sec % 3600) / 60); const ss = sec % 60;
-  $('#lv-timer').textContent = `${hh ? `${hh}:` : ''}${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return `${hh ? `${hh}:` : ''}${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+// ── Recording (presenter, EEM26 Live app) ──────────────────
+// The app records the shared screen and the presenter's voice to the phone's
+// Movies/EEM26 folder. Attendees see a REC sign while it runs.
+function toggleRecording() {
+  try {
+    if (S.rec) NATIVE.stopRecording();
+    else NATIVE.startRecording();
+  } catch (e) { toast(`Recording: ${e.message}`, 'error'); }
+}
+
+window.__eem26Rec = (st) => {
+  if (!IS_HOST) return;
+  const was = !!S.rec;
+  S.rec = st?.on ? (S.rec || { at: Date.now() }) : null;
+  if (st?.error) toast(st.error, 'error', 6000);
+  else if (st?.on && !was) toast('Recording started', 'success');
+  else if (!st?.on && was) toast(st?.saved ? `Recording saved: ${st.saved}` : 'Recording stopped', 'success', 6000);
+  renderControls();
+  updateRec();
+  stateChanged();
+};
+
+function updateRec() {
+  const on = IS_HOST ? !!S.rec : !!S.view?.recording;
+  $('#lv-rec')?.classList.toggle('hidden', !on);
+  if (on && IS_HOST) tickTimer();
+  else if (!IS_HOST) $('#lv-rec-time').textContent = '';
+}
+
+// Attendees: their name drifts across the screen, so a recording made
+// with another device or app shows who it came from.
+function moveWatermark() {
+  const wm = $('#lv-wm');
+  if (!wm) return;
+  wm.textContent = `${S.name} · ${new Date().toLocaleDateString()}`;
+  wm.style.left = `${8 + Math.random() * 60}%`;
+  wm.style.top = `${10 + Math.random() * 70}%`;
 }
 
 function updateCount() {
@@ -1392,18 +1449,17 @@ function saveHostState() {
   if (!IS_HOST || !S.room) return;
   schedule('save', () => {
     try {
-      sessionStorage.setItem(`lv_host_${S.room}`, JSON.stringify({
+      persist.set(`lv_host_${S.room}`, {
         settings: S.settings, messages: S.messages.slice(-200), polls: S.polls, poll: S.poll,
         results: [...S.results.entries()], votes: [...S.votes.entries()].map(([k, m]) => [k, [...m.entries()]]),
         people: [...S.people.values()].map((p) => ({ identity: p.identity, grants: [...p.grants], blocked: p.blocked })),
-      }));
-    } catch { /* storage unavailable */ }
+      });
+    } catch { /* unserializable */ }
   }, 1000);
 }
 
 function restoreHostState() {
-  let saved;
-  try { saved = JSON.parse(sessionStorage.getItem(`lv_host_${S.room}`) || 'null'); } catch { saved = null; }
+  const saved = persist.get(`lv_host_${S.room}`);
   if (!saved) return;
   S.settings = { ...DEFAULT_SETTINGS, ...saved.settings };
   S.messages = saved.messages || [];
@@ -1423,6 +1479,9 @@ function videoEl(track, cls) {
     el.muted = true;
     el.playsInline = true;
     el.autoplay = true;
+    el.disablePictureInPicture = true;
+    el.setAttribute('controlslist', 'nodownload nofullscreen noremoteplayback');
+    el.disableRemotePlayback = true;
     el.srcObject = new MediaStream([track]);
     S.videoEls.set(track.id, el);
     track.addEventListener('ended', () => S.videoEls.delete(track.id));
@@ -1580,6 +1639,9 @@ function renderControls() {
   if (can('screen')) {
     const on = !!l.screen;
     center.append(ctrl('screen', on ? 'screenOff' : 'screen', on ? 'Stop share' : 'Share screen', { active: on, on: toggleScreen }));
+  }
+  if (IS_HOST && NATIVE?.startRecording && (S.rec || l.screen?.cast)) {
+    center.append(ctrl('rec', S.rec ? 'recordStop' : 'record', S.rec ? 'Stop recording' : 'Record', { active: !!S.rec, on: toggleRecording }));
   }
   if (!IS_HOST && s.hands) {
     const up = myHandUp();
@@ -2142,6 +2204,7 @@ function renderAll() {
   updateCount();
   updateBadges();
   tickTimer();
+  updateRec();
 }
 
 window.addEventListener('beforeunload', () => { if (!IS_HOST) sendUp({ t: 'bye' }); });

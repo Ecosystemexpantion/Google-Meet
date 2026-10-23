@@ -32,3 +32,23 @@ export function supabaseClient() {
   try { return window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY); }
   catch { return null; }
 }
+
+// Presenter sign-in and "class in progress" survive the app or browser being
+// closed in the background (sessionStorage would be wiped), for half a day.
+const KEEP_MS = 12 * 3600e3;
+export const keep = {
+  get(key) {
+    try {
+      const v = JSON.parse(localStorage.getItem(key) || 'null');
+      if (v && v.exp > Date.now()) return v.v;
+      localStorage.removeItem(key);
+    } catch { /* storage unavailable */ }
+    return null;
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, JSON.stringify({ v: value, exp: Date.now() + KEEP_MS })); } catch { /* storage unavailable */ }
+  },
+  del(key) {
+    try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+  },
+};
