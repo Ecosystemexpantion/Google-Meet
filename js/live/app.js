@@ -225,7 +225,7 @@ function hostSnapshot() {
     blocked: online.filter((p) => p.blocked).map((p) => p.identity),
     roster: S.settings.showPeople ? online.slice(0, 300).map((p) => [p.identity, p.name.slice(0, 24)]) : null,
     poll: S.poll,
-    recording: !!S.rec,
+    recording: S.rec ? (S.rec.paused ? 'paused' : 'on') : false,
   };
 }
 
@@ -265,7 +265,7 @@ function shell() {
       h('div', { class: 'lv-top-mid' },
         h('span', { class: 'lv-live', id: 'lv-live' }, h('span', { class: 'lv-dot' }), 'LIVE', h('span', { id: 'lv-timer', class: 'lv-timer' }, '00:00'))),
       h('div', { class: 'lv-top-right' },
-        h('span', { class: 'lv-rec hidden', id: 'lv-rec', title: 'This class is being recorded by the presenter' }, h('span', { class: 'lv-rec-dot' }), 'REC', h('span', { id: 'lv-rec-time', class: 'lv-timer' })),
+        h('span', { class: 'lv-rec hidden', id: 'lv-rec', title: 'This class is being recorded by the presenter' }, h('span', { class: 'lv-rec-dot' }), h('span', { id: 'lv-rec-label' }, 'REC'), h('span', { id: 'lv-rec-time', class: 'lv-timer' })),
         h('span', { class: 'lv-pill lv-status hidden', id: 'lv-status', role: 'status' }),
         h('span', { class: 'lv-pill hidden', id: 'lv-locked', title: 'Room is locked', html: `${icon('lock', 14)} Locked` }),
         IS_HOST ? h('button', { class: 'lv-pill lv-pill-btn', id: 'lv-hands-pill', title: 'Raised hands', onclick: () => openPanel('people'), html: `${icon('hand', 14)} <b id="lv-hands-count">0</b>` }) : null,
@@ -488,7 +488,13 @@ function goLive() {
   every(4000, mediaWatchdog);
   // In the app: keep the class running (and signed in) while in other apps.
   try { NATIVE?.classLive?.(true); } catch { /* app too old */ }
-  if (IS_HOST) { try { if (NATIVE?.isRecording?.()) S.rec = { at: Date.now() }; } catch { /* app too old */ } }
+  // The recording runs in the app, so it outlives this page: pick it back up
+  // (e.g. after the presenter was in another app) and keep the buttons in step.
+  if (IS_HOST && NATIVE) {
+    syncRec();
+    every(2000, syncRec);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) syncRec(); });
+  }
   else { moveWatermark(); every(20000, moveWatermark); }
   window.__lv = S; // handy for debugging from the console
   S.debug = { setScreenPaused };
@@ -1394,7 +1400,7 @@ function tickTimer() {
   if (!start) return;
   const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
   $('#lv-timer').textContent = clock(sec);
-  if (S.rec) $('#lv-rec-time').textContent = clock(Math.floor((Date.now() - S.rec.at) / 1000));
+  if (S.rec) $('#lv-rec-time').textContent = clock(Math.floor(recMs() / 1000));
 }
 
 function clock(sec) {
@@ -1409,13 +1415,13 @@ function toggleRecording() {
   if (!NATIVE.startRecording) {
     modal({
       title: 'Update EEM26 Live to record',
-      body: h('p', {}, 'Recording needs the latest EEM26 Live app (2.7). Close the app completely, open it again and tap “Update now”.'),
+      body: h('p', {}, 'Recording needs the latest EEM26 Live app. Close the app completely, open it again and tap “Update now”.'),
       actions: [{ label: 'OK' }],
     });
     return;
   }
   try {
-    if (S.rec) { S.recPending = false; NATIVE.stopRecording(); }
+    if (S.rec) { S.recPending = false; NATIVE.stopRecording(); toast('Saving the recording… your screen stays shared', 'info'); }
     else if (S.local.screen?.cast) NATIVE.startRecording();
     else if (S.recPending) { S.recPending = false; toast('Recording cancelled', 'info'); renderControls(); }
     else {
@@ -1428,14 +1434,49 @@ function toggleRecording() {
   } catch (e) { toast(`Recording: ${e.message}`, 'error'); }
 }
 
+function togglePauseRecording() {
+  if (!S.rec || !NATIVE?.setRecordingPaused) return;
+  try { NATIVE.setRecordingPaused(!S.rec.paused); } catch (e) { toast(`Recording: ${e.message}`, 'error'); }
+}
+
+// What the app says about its recording: {on, paused, ms} (app 2.8+), or just on/off.
+function nativeRec() {
+  try {
+    if (NATIVE?.recordingState) return JSON.parse(NATIVE.recordingState());
+    return { on: !!NATIVE?.isRecording?.() };
+  } catch { return null; }
+}
+
+function recMs() {
+  return S.rec ? (S.rec.paused ? S.rec.ms : Date.now() - S.rec.at) : 0;
+}
+
+function setRec(st) {
+  if (!st?.on) { S.rec = null; return; }
+  const ms = typeof st.ms === 'number' ? st.ms : recMs();
+  S.rec = { paused: !!st.paused, ms, at: Date.now() - ms };
+}
+
+function syncRec() {
+  const st = nativeRec();
+  if (!st) return;
+  const changed = !!st.on !== !!S.rec || (st.on && !!st.paused !== !!S.rec?.paused);
+  if (!changed) { if (st.on && typeof st.ms === 'number') setRec(st); return; }
+  setRec(st);
+  renderControls();
+  updateRec();
+  stateChanged();
+}
+
 window.__eem26Rec = (st) => {
   if (!IS_HOST) return;
   // App 2.7 reports a recording that did start as an error; trust the app's own state.
-  if (st?.error && !st.saved) { try { if (NATIVE?.isRecording?.()) st = { on: true }; } catch { /* ignore */ } }
-  const was = !!S.rec;
-  S.rec = st?.on ? (S.rec || { at: Date.now() }) : null;
+  if (st?.error && !st.saved) { const n = nativeRec(); if (n?.on) st = n; }
+  const was = S.rec;
+  setRec(st);
   if (st?.error) toast(st.error, 'error', 6000);
   else if (st?.on && !was) toast('Recording started', 'success');
+  else if (st?.on && was && !!st.paused !== !!was.paused) toast(st.paused ? 'Recording paused' : 'Recording resumed', 'info');
   else if (!st?.on && was) toast(st?.saved ? `Recording saved: ${st.saved}` : 'Recording stopped', 'success', 6000);
   renderControls();
   updateRec();
@@ -1443,9 +1484,13 @@ window.__eem26Rec = (st) => {
 };
 
 function updateRec() {
-  const on = IS_HOST ? !!S.rec : !!S.view?.recording;
-  $('#lv-rec')?.classList.toggle('hidden', !on);
-  if (on && IS_HOST) tickTimer();
+  const state = IS_HOST ? (S.rec ? (S.rec.paused ? 'paused' : 'on') : false) : S.view?.recording;
+  const chip = $('#lv-rec');
+  if (!chip) return;
+  chip.classList.toggle('hidden', !state);
+  chip.classList.toggle('paused', state === 'paused');
+  $('#lv-rec-label').textContent = state === 'paused' ? 'REC PAUSED' : 'REC';
+  if (state && IS_HOST) tickTimer();
   else if (!IS_HOST) $('#lv-rec-time').textContent = '';
 }
 
@@ -1660,7 +1705,10 @@ function renderControls() {
     center.append(ctrl('screen', on ? 'screenOff' : 'screen', on ? 'Stop share' : 'Share screen', { active: on, on: toggleScreen }));
   }
   if (IS_HOST && NATIVE) {
-    center.append(ctrl('rec', S.rec ? 'recordStop' : 'record', S.rec ? 'Stop recording' : S.recPending ? 'Starting…' : 'Record', { active: !!S.rec || S.recPending, on: toggleRecording }));
+    if (S.rec && NATIVE.setRecordingPaused) {
+      center.append(ctrl('recpause', S.rec.paused ? 'record' : 'pause', S.rec.paused ? 'Resume rec' : 'Pause rec', { active: S.rec.paused, on: togglePauseRecording }));
+    }
+    center.append(ctrl('rec', S.rec ? 'recordStop' : 'record', S.rec ? 'Stop rec' : S.recPending ? 'Starting…' : 'Record', { active: !!S.rec || S.recPending, on: toggleRecording }));
   }
   if (!IS_HOST && s.hands) {
     const up = myHandUp();

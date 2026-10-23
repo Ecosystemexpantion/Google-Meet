@@ -48,6 +48,8 @@ class CastService : Service() {
     companion object {
         const val ACTION_START = "io.eem26.cast.START"
         const val ACTION_STOP = "io.eem26.cast.STOP"
+        const val ACTION_REC_STOP = "io.eem26.cast.REC_STOP"
+        const val ACTION_REC_PAUSE = "io.eem26.cast.REC_PAUSE"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_API = "api"
@@ -80,6 +82,13 @@ class CastService : Service() {
         }
 
         val recording: Boolean get() = instance?.recorder != null
+
+        /** {on, paused, ms} for the class page, which may have reloaded meanwhile. */
+        fun recordingState(): String = instance?.recState() ?: JSONObject().put("on", false).toString()
+
+        fun setRecordingPaused(paused: Boolean) {
+            instance?.pauseRecording(paused)
+        }
 
         /** Starts recording the share; returns why it can't, or null. */
         fun startRecording(): String? {
@@ -115,6 +124,8 @@ class CastService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopCast("Stopped")
+            ACTION_REC_STOP -> Thread { endRecording() }.start()
+            ACTION_REC_PAUSE -> recorder?.let { pauseRecording(!it.paused) }
             ACTION_START -> if (!running) start(intent)
         }
         return START_NOT_STICKY
@@ -389,11 +400,23 @@ class CastService : Service() {
             recorder = r
             track.addSink(r)
             refreshNotification()
-            main.post { recListener?.invoke(JSONObject().put("on", true).toString()) }
+            main.post { recListener?.invoke(recState()) }
             null
         } catch (e: Exception) {
             "Couldn’t start recording: ${e.message ?: e.javaClass.simpleName}"
         }
+    }
+
+    private fun recState(): String {
+        val r = recorder ?: return JSONObject().put("on", false).toString()
+        return JSONObject().put("on", true).put("paused", r.paused).put("ms", r.recordedMs()).toString()
+    }
+
+    private fun pauseRecording(paused: Boolean) {
+        val r = recorder ?: return
+        if (paused) r.pause() else r.resume()
+        refreshNotification()
+        main.post { recListener?.invoke(recState()) }
     }
 
     /** Finishes the recording (blocks until the file is written). */
@@ -431,13 +454,24 @@ class CastService : Service() {
         val open = PendingIntent.getActivity(this, 2, launch, flags)
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
         else @Suppress("DEPRECATION") Notification.Builder(this)
-        return b.setSmallIcon(android.R.drawable.presence_video_online)
-            .setContentTitle(if (recorder != null) "Sharing and recording your screen" else "Sharing your screen with the class")
-            .setContentText(if (recorder != null) "Recording to Movies/EEM26 — stop it from the class screen." else "Everyone in the live class can see your screen.")
+        val rec = recorder
+        b.setSmallIcon(android.R.drawable.presence_video_online)
+            .setContentTitle(when {
+                rec == null -> "Sharing your screen with the class"
+                rec.paused -> "Sharing your screen · recording paused"
+                else -> "Sharing and recording your screen"
+            })
+            .setContentText(if (rec != null) "Recording to Movies/EEM26. Your screen stays shared when you stop recording." else "Everyone in the live class can see your screen.")
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Stop sharing", stop).build())
-            .build()
+        if (rec != null) {
+            val pause = PendingIntent.getService(this, 4, Intent(this, CastService::class.java).setAction(ACTION_REC_PAUSE), flags)
+            val recStop = PendingIntent.getService(this, 5, Intent(this, CastService::class.java).setAction(ACTION_REC_STOP), flags)
+            b.addAction(Notification.Action.Builder(null, if (rec.paused) "Resume recording" else "Pause recording", pause).build())
+            b.addAction(Notification.Action.Builder(null, "Stop recording", recStop).build())
+        }
+        return b.build()
     }
 
     override fun onDestroy() {

@@ -79,6 +79,8 @@ class StudioActivity : Activity() {
     private var pendingShare: Triple<String, String, String>? = null
     private var pendingGuest = false
     private var pendingWebPermission: PermissionRequest? = null
+    private val shareListener: (String?) -> Unit = { json -> web.evaluateJavascript("window.__eem26Share && window.__eem26Share(${json ?: "null"})", null) }
+    private val recListener: (String) -> Unit = { json -> web.evaluateJavascript("window.__eem26Rec && window.__eem26Rec($json)", null) }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,8 +134,8 @@ class StudioActivity : Activity() {
         }
         setContentView(web)
         // An attendee's phone share: hand the track to the page, which tells the presenter.
-        CastService.shareListener = { json -> web.evaluateJavascript("window.__eem26Share && window.__eem26Share(${json ?: "null"})", null) }
-        CastService.recListener = { json -> web.evaluateJavascript("window.__eem26Rec && window.__eem26Rec($json)", null) }
+        CastService.shareListener = shareListener
+        CastService.recListener = recListener
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(startUrl)
     }
 
@@ -152,12 +154,15 @@ class StudioActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        CastService.shareListener = shareListener
+        CastService.recListener = recListener
         Updater.check(this) // not only from the home screen: people stay in the class screen
     }
 
     override fun onDestroy() {
-        CastService.shareListener = null
-        CastService.recListener = null
+        // Only if still ours: a new class screen may already have taken over.
+        if (CastService.shareListener === shareListener) CastService.shareListener = null
+        if (CastService.recListener === recListener) CastService.recListener = null
         ClassService.stop(this) // the page is gone; reopening the app brings it back (liveUrl)
         web.destroy()
         super.onDestroy()
@@ -337,5 +342,11 @@ class StudioActivity : Activity() {
 
         @JavascriptInterface
         fun isRecording(): Boolean = CastService.recording
+
+        @JavascriptInterface
+        fun recordingState(): String = CastService.recordingState()
+
+        @JavascriptInterface
+        fun setRecordingPaused(paused: Boolean) = CastService.setRecordingPaused(paused)
     }
 }

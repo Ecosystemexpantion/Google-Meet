@@ -54,6 +54,32 @@ class Recorder(
     @Volatile private var closed = false
     @Volatile private var lastFrameNs = 0L
 
+    // Pause: nothing is recorded meanwhile and the file just continues
+    // afterwards (the paused time is taken out of every timestamp).
+    @Volatile var paused = false
+        private set
+    private var pauseStartNs = 0L
+    @Volatile private var pausedTotalNs = 0L
+    private val startedNs = System.nanoTime()
+
+    @Synchronized fun pause() {
+        if (paused || closed) return
+        pauseStartNs = System.nanoTime()
+        paused = true
+    }
+
+    @Synchronized fun resume() {
+        if (!paused) return
+        pausedTotalNs += System.nanoTime() - pauseStartNs
+        paused = false
+    }
+
+    /** How long has been recorded so far (pauses left out), in ms. */
+    @Synchronized fun recordedMs(): Long {
+        val pausing = if (paused) System.nanoTime() - pauseStartNs else 0L
+        return (System.nanoTime() - startedNs - pausedTotalNs - pausing) / 1_000_000
+    }
+
     private val muxer: MediaMuxer
     private var uri: Uri? = null
     private var pfd: ParcelFileDescriptor? = null
@@ -139,13 +165,14 @@ class Recorder(
 
     // ── Screen ──
     override fun onFrame(frame: VideoFrame) {
-        if (closed) return
+        if (closed || paused) return
         val now = System.nanoTime()
         if (now - lastFrameNs < 60_000_000L) return // ~15 frames a second is plenty
         lastFrameNs = now
+        val at = now - pausedTotalNs
         frame.retain()
         handler.post {
-            try { draw(frame, now) } catch (_: Exception) {} finally { frame.release() }
+            try { draw(frame, at) } catch (_: Exception) {} finally { frame.release() }
         }
     }
 
@@ -167,11 +194,11 @@ class Recorder(
     // ── Voice ──
     /** Called on WebRTC's microphone thread with every 10 ms of sound. */
     fun onAudio(samples: JavaAudioDeviceModule.AudioSamples, muted: Boolean) {
-        if (closed || audioOff) return
+        if (closed || audioOff || paused) return
         val data = if (muted) ByteArray(samples.data.size) else samples.data.copyOf()
         val rate = samples.sampleRate
         val channels = samples.channelCount
-        val atUs = (System.nanoTime() - t0) / 1000
+        val atUs = (System.nanoTime() - t0 - pausedTotalNs) / 1000
         handler.post { try { encodeAudio(data, rate, channels, atUs) } catch (_: Exception) { audioOff = true } }
     }
 
