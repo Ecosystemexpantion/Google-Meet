@@ -1,17 +1,17 @@
 // ─── Presenter: sign in, schedule classes, share links, start ─────
 // The password is checked by the server (HOST_PASSWORD secret); it is kept in
-// this tab's sessionStorage, like before, for the studio to open rooms.
-import { api } from './live/api.js?v=32ecbaba';
-import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=32ecbaba';
+// this device for 12 hours (see keep), so leaving the app doesn't sign out.
+import { api, keep } from './live/api.js?v=b85381e6';
+import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=b85381e6';
 
 const main = $('#main');
 const signout = $('#signout');
 const KEY = 'eem26_host_pw';
-let password = sessionStorage.getItem(KEY) || '';
+let password = keep.get(KEY) || '';
 let editing = null;
 
 signout.innerHTML = `${icon('logout', 16)}Sign out`;
-signout.onclick = () => { sessionStorage.removeItem(KEY); sessionStorage.removeItem('lv_host_live'); location.href = 'host.html'; };
+signout.onclick = () => { keep.del(KEY); keep.del('lv_host_live'); location.href = 'host.html'; };
 
 // ── Sign in ───────────────────────────────────────────────
 function showLogin(message) {
@@ -26,7 +26,7 @@ function showLogin(message) {
     try {
       await api('host-login', { password: pass.value });
       password = pass.value;
-      sessionStorage.setItem(KEY, password);
+      keep.set(KEY, password);
       showDashboard();
     } catch (x) {
       err.textContent = x.status === 401 ? 'That password isn’t right — try again.' : `Couldn’t sign in: ${x.message}`;

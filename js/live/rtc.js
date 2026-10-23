@@ -5,8 +5,8 @@
 // All SFU calls go through the Supabase Edge Function proxy, which holds the
 // Cloudflare secret. It hands back a signature for every session we create;
 // this module attaches it to later calls on that session.
-import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=32ecbaba';
-import { endpoint } from './api.js?v=32ecbaba';
+import { PartyTracks, BehaviorSubject, of, setLogLevel } from '../vendor/partytracks.mjs?v=b85381e6';
+import { endpoint } from './api.js?v=b85381e6';
 
 const SFU = () => `${endpoint()}/sfu`;
 const sigs = new Map();
