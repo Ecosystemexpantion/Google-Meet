@@ -82,7 +82,10 @@ class CastService : Service() {
         val recording: Boolean get() = instance?.recorder != null
 
         /** Starts recording the share; returns why it can't, or null. */
-        fun startRecording(): String? = instance?.beginRecording() ?: "Share your screen from the app first, then press Record."
+        fun startRecording(): String? {
+            val svc = instance ?: return "Share your screen from the app first, then press Record."
+            return svc.beginRecording()
+        }
 
         fun stopRecording() {
             instance?.let { svc -> Thread { svc.endRecording() }.start() }

@@ -141,9 +141,14 @@ await host.addInitScript(() => {
   window.EEM26App = {
     startShare() {}, stopShare() {}, isSharing: () => false, setMicMuted() {},
     classLive(v) { window.__classLive = v; },
-    isRecording: () => false,
-    startRecording() { setTimeout(() => window.__eem26Rec({ on: true }), 50); },
-    stopRecording() { setTimeout(() => window.__eem26Rec({ on: false, saved: 'Movies/EEM26/EEM26 class.mp4' }), 50); },
+    isRecording: () => !!window.__recording,
+    // like app 2.7: reports "started", then wrongly an error as well
+    startRecording() {
+      window.__recording = true;
+      setTimeout(() => window.__eem26Rec({ on: true }), 50);
+      setTimeout(() => window.__eem26Rec({ on: false, error: 'Share your screen from the app first, then press Record.' }), 80);
+    },
+    stopRecording() { window.__recording = false; setTimeout(() => window.__eem26Rec({ on: false, saved: 'Movies/EEM26/EEM26 class.mp4' }), 50); },
   };
 });
 await host.goto(`${BASE}/host-room.html?room=${ROOM}`);

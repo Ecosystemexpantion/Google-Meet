@@ -11,8 +11,8 @@ android {
         applicationId = "io.eem26.cast"
         minSdk = 24
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.7"
+        versionCode = 10
+        versionName = "2.8"
     }
 
     // A fixed key so new versions install over old ones. It's committed on

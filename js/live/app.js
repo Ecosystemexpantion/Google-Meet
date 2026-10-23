@@ -1430,6 +1430,8 @@ function toggleRecording() {
 
 window.__eem26Rec = (st) => {
   if (!IS_HOST) return;
+  // App 2.7 reports a recording that did start as an error; trust the app's own state.
+  if (st?.error && !st.saved) { try { if (NATIVE?.isRecording?.()) st = { on: true }; } catch { /* ignore */ } }
   const was = !!S.rec;
   S.rec = st?.on ? (S.rec || { at: Date.now() }) : null;
   if (st?.error) toast(st.error, 'error', 6000);

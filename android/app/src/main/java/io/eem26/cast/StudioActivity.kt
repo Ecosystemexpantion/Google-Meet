@@ -150,6 +150,11 @@ class StudioActivity : Activity() {
     // Deliberately no web.onPause()/pauseTimers(): the class keeps running
     // while the presenter is in another app.
 
+    override fun onResume() {
+        super.onResume()
+        Updater.check(this) // not only from the home screen: people stay in the class screen
+    }
+
     override fun onDestroy() {
         CastService.shareListener = null
         CastService.recListener = null
