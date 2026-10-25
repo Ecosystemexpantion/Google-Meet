@@ -10,6 +10,7 @@
 //
 // Runtime-agnostic (Deno on Supabase, Node for local tests): web-standard
 // fetch/Request/Response/crypto only.
+import { sendPush, newVapidKeys } from './webpush.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -75,7 +76,22 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
       sfuBase: get('CF_SFU_API_BASE') || 'https://rtc.live.cloudflare.com/v1',
       hostPassword: get('HOST_PASSWORD'),
       maxAttendees: Number(get('MAX_PARTICIPANTS') || 300),
+      // Class reminders (Web Push). The cron job proves itself with CRON_SECRET.
+      vapid: get('VAPID_PUBLIC') && get('VAPID_PRIVATE')
+        ? { publicKey: get('VAPID_PUBLIC'), privateKey: get('VAPID_PRIVATE'), subject: get('VAPID_SUBJECT') || 'https://ecosystemexpantion.github.io/Google-Meet/' }
+        : null,
+      cronSecret: get('CRON_SECRET'),
+      site: (get('SITE_URL') || 'https://ecosystemexpantion.github.io/Google-Meet/').replace(/\/?$/, '/'),
     };
+    // First use: make the push key pair and keep it in Vault (never leaves the server).
+    if (!cfg.vapid && store.initVapid) {
+      try {
+        const saved = await store.initVapid(await newVapidKeys());
+        if (saved?.lv_vapid_public && saved?.lv_vapid_private) {
+          cfg.vapid = { publicKey: saved.lv_vapid_public, privateKey: saved.lv_vapid_private, subject: get('VAPID_SUBJECT') || cfg.site };
+        }
+      } catch (e) { console.error('vapid', e); }
+    }
     if (!cfg.appId || !cfg.appToken) cfgPromise = null; // retry on the next request
   })());
   let keyPromise = null;
@@ -237,6 +253,8 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
           duration_min: durationMin,
           room: prev?.room || `EEM26-${id}`,
         });
+        // moved to another time: everyone gets their reminders again
+        if (prev && Date.parse(prev.starts_at) !== startsAt) await store.resetReminders(id).catch(() => {});
         return { event: publicEvent(row) };
       }
 
@@ -245,7 +263,8 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
         const since = new Date(Date.now() - 7 * 86400e3).toISOString();
         const rows = await store.listEvents(since);
         const rooms = await Promise.all(rows.map((e) => store.getRoom(e.room)));
-        return { events: rows.map((e, i) => ({ ...publicEvent(e), live: isLive(rooms[i]) })) };
+        const reminders = await Promise.all(rows.map((e) => store.countReminders(e.id).catch(() => 0)));
+        return { events: rows.map((e, i) => ({ ...publicEvent(e), live: isLive(rooms[i]), reminders: reminders[i] })) };
       }
 
       case 'event-delete': {
@@ -271,6 +290,37 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
         const live = rows.find((e, i) => isLive(rooms[i]));
         const next = live || rows.find((e) => Date.parse(e.starts_at) + e.duration_min * 60e3 > now);
         return { event: next ? publicEvent(next) : null, live: !!live };
+      }
+
+      // ── Reminders: the class page subscribes the browser for push
+      // notifications; a cron job calls remind-run every minute. ──
+      case 'push-key':
+        return { key: cfg.vapid?.publicKey || null };
+
+      case 'remind-add': {
+        if (!cfg.vapid) throw new HttpError(503, 'no_push', 'Reminders aren’t set up yet.');
+        const ev = await store.getEvent(clean(body.id, 32));
+        if (!ev) throw new HttpError(404, 'no_event', 'This class link isn’t valid any more.');
+        const sub = pushSub(body.sub);
+        const now = Date.now();
+        if (now > classEnd(ev)) throw new HttpError(410, 'ended', 'This class has ended.');
+        // reminders whose moment has already passed are not sent late
+        const passed = REMINDERS.filter((r) => now >= Date.parse(ev.starts_at) + r.until).map((r) => r.id);
+        await store.saveReminder({ event_id: ev.id, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, name: clean(body.name, 40), sent: passed });
+        const status = await notify(sub, ev, { title: 'Reminders are on ✓', body: `We’ll remind you before “${ev.title}” starts and when it goes live.` }).catch(() => 0);
+        return { ok: true, upcoming: REMINDERS.filter((r) => !passed.includes(r.id)).map((r) => r.id), delivered: status >= 200 && status < 300 };
+      }
+
+      case 'remind-remove': {
+        const sub = pushSub(body.sub);
+        await store.deleteReminder(clean(body.id, 32), sub.endpoint);
+        return { ok: true };
+      }
+
+      case 'remind-run': {
+        if (!cfg.cronSecret || !safeEqual(String(body.secret || ''), cfg.cronSecret)) throw new HttpError(401, 'bad_secret');
+        if (!cfg.vapid) return { sent: 0, gone: 0 };
+        return runReminders(Number(body.now) || Date.now());
       }
 
       case 'room-info': {
@@ -304,6 +354,69 @@ export function createHandler({ env, store, fetchImpl = (...a) => fetch(...a) })
       default:
         throw new HttpError(400, 'bad_action');
     }
+  }
+
+  // Reminder moments relative to the start (ms) and the latest time each is
+  // still worth sending. "live" goes out when the presenter opens the room.
+  const MIN = 60e3;
+  const REMINDERS = [
+    { id: 'day', at: -24 * 60 * MIN, until: -3 * 60 * MIN },
+    { id: 'hour', at: -60 * MIN, until: -20 * MIN },
+    { id: 'soon', at: -10 * MIN, until: 0 },
+  ];
+
+  function classEnd(ev) {
+    return Date.parse(ev.starts_at) + ev.duration_min * MIN;
+  }
+
+  function pushSub(sub) {
+    const endpoint = String(sub?.endpoint || '');
+    const p256dh = String(sub?.keys?.p256dh || '');
+    const auth = String(sub?.keys?.auth || '');
+    let ok = endpoint.length <= 1000 && /^[A-Za-z0-9_-]{80,100}$/.test(p256dh) && /^[A-Za-z0-9_-]{16,32}$/.test(auth);
+    try { ok &&= new URL(endpoint).protocol === 'https:'; } catch { ok = false; }
+    if (!ok) throw new HttpError(400, 'bad_subscription', 'This browser can’t receive reminders.');
+    return { endpoint, keys: { p256dh, auth } };
+  }
+
+  function notify(sub, ev, msg) {
+    const url = `${cfg.site}class.html?${new URLSearchParams({ e: ev.id, go: '1' })}`;
+    return sendPush(sub, { tag: `class-${ev.id}`, url, ...msg }, cfg.vapid, { fetchImpl, ttl: msg.live ? 1800 : 3 * 3600 });
+  }
+
+  function reminderText(id, ev) {
+    switch (id) {
+      case 'day': return { title: `Tomorrow: ${ev.title}`, body: 'Your live class starts in 24 hours. Tap to see the details.' };
+      case 'hour': return { title: `In 1 hour: ${ev.title}`, body: 'Your live class starts in an hour. Tap to get ready — we’ll take you in when it starts.' };
+      case 'soon': return { title: `Starting in 10 minutes: ${ev.title}`, body: 'Tap now and you’ll be taken in the moment it starts.' };
+      default: return { title: `🔴 Live now: ${ev.title}`, body: 'The class has started — tap to join.', live: true };
+    }
+  }
+
+  async function runReminders(now) {
+    const events = await store.listEvents(new Date(now - 26 * 3600e3).toISOString());
+    let sent = 0;
+    let gone = 0;
+    for (const ev of events) {
+      const start = Date.parse(ev.starts_at);
+      if (start - now > 25 * 3600e3 || now > classEnd(ev) + 30 * MIN) continue;
+      const due = REMINDERS.filter((r) => now >= start + r.at && now < start + r.until).map((r) => r.id);
+      if (now >= start - 60 * MIN && isLive(await store.getRoom(ev.room))) due.push('live');
+      if (!due.length) continue;
+      const subs = await store.listReminders(ev.id);
+      // a few at a time, so a big class doesn't take minutes
+      for (let i = 0; i < subs.length; i += 25) {
+        await Promise.all(subs.slice(i, i + 25).map(async (r) => {
+          const todo = due.filter((id) => !(r.sent || []).includes(id));
+          if (!todo.length) return;
+          // only the latest one if several are due at once (e.g. "soon" and "live")
+          const status = await notify({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, ev, reminderText(todo.at(-1), ev)).catch((e) => { console.error('push', e); return 0; });
+          if (status === 404 || status === 410) { gone++; await store.deleteReminder(ev.id, r.endpoint); return; }
+          if (status >= 200 && status < 300) { sent++; await store.markReminder(r.id, [...(r.sent || []), ...todo]); }
+        }));
+      }
+    }
+    return { sent, gone };
   }
 
   function newEventId() {
@@ -386,6 +499,9 @@ export function supabaseStore({ url, serviceKey, fetchImpl = (...a) => fetch(...
     async loadConfig() {
       return rest('rpc/lv_config', { method: 'POST', body: '{}' });
     },
+    async initVapid({ publicKey, privateKey }) {
+      return rest('rpc/lv_init_vapid', { method: 'POST', body: JSON.stringify({ pub: publicKey, priv: privateKey }) });
+    },
     async getRoom(name) {
       const rows = await rest(`lv_rooms?name=eq.${encodeURIComponent(name)}&select=*`);
       return rows[0] || null;
@@ -427,6 +543,29 @@ export function supabaseStore({ url, serviceKey, fetchImpl = (...a) => fetch(...
     async deleteEvent(id) {
       await rest(`lv_events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
+    async saveReminder(row) {
+      await rest('lv_reminders?on_conflict=event_id,endpoint', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(row),
+      });
+    },
+    async listReminders(eventId) {
+      return rest(`lv_reminders?event_id=eq.${encodeURIComponent(eventId)}&select=id,endpoint,p256dh,auth,sent&limit=5000`);
+    },
+    async markReminder(id, sent) {
+      await rest(`lv_reminders?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ sent }) });
+    },
+    async deleteReminder(eventId, endpoint) {
+      await rest(`lv_reminders?event_id=eq.${encodeURIComponent(eventId)}&endpoint=eq.${encodeURIComponent(endpoint)}`, { method: 'DELETE' });
+    },
+    async resetReminders(eventId) {
+      await rest(`lv_reminders?event_id=eq.${encodeURIComponent(eventId)}`, { method: 'PATCH', body: JSON.stringify({ sent: [] }) });
+    },
+    async countReminders(eventId) {
+      const rows = await rest(`lv_reminders?event_id=eq.${encodeURIComponent(eventId)}&select=id`);
+      return rows.length;
+    },
     async countAttendees(room) {
       // distinct people who joined in the last 3 hours
       const since = new Date(Date.now() - 3 * 3600e3).toISOString();
@@ -440,6 +579,7 @@ export function memoryStore() {
   const rooms = new Map();
   const events = new Map();
   let attendees = [];
+  let reminders = [];
   let seq = 0;
   return {
     async getRoom(name) { return rooms.get(name) || null; },
@@ -452,5 +592,14 @@ export function memoryStore() {
     async saveEvent(row) { const r = { created_at: new Date().toISOString(), ...events.get(row.id), ...row }; events.set(row.id, r); return r; },
     async listEvents(since) { return [...events.values()].filter((e) => e.starts_at >= since).sort((a, b) => a.starts_at.localeCompare(b.starts_at)); },
     async deleteEvent(id) { events.delete(id); },
+    async saveReminder(row) {
+      const prev = reminders.find((r) => r.event_id === row.event_id && r.endpoint === row.endpoint);
+      if (prev) Object.assign(prev, row); else reminders.push({ id: ++seq, ...row });
+    },
+    async listReminders(eventId) { return reminders.filter((r) => r.event_id === eventId).map((r) => ({ ...r })); },
+    async markReminder(id, sent) { const r = reminders.find((x) => x.id === id); if (r) r.sent = sent; },
+    async deleteReminder(eventId, endpoint) { reminders = reminders.filter((r) => !(r.event_id === eventId && r.endpoint === endpoint)); },
+    async resetReminders(eventId) { reminders.filter((r) => r.event_id === eventId).forEach((r) => { r.sent = []; }); },
+    async countReminders(eventId) { return reminders.filter((r) => r.event_id === eventId).length; },
   };
 }

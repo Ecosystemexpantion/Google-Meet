@@ -1,8 +1,8 @@
 // ─── Presenter: sign in, schedule classes, share links, start ─────
 // The password is checked by the server (HOST_PASSWORD secret); it is kept in
 // this device for 12 hours (see keep), so leaving the app doesn't sign out.
-import { api, keep } from './live/api.js?v=d21b2415';
-import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=d21b2415';
+import { api, keep } from './live/api.js?v=36ab7949';
+import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=36ab7949';
 
 const main = $('#main');
 const signout = $('#signout');
@@ -140,7 +140,7 @@ function item(ev, past) {
     h('div', { class: 'datebox' }, h('b', {}, d.getDate()), h('span', {}, d.toLocaleDateString(undefined, { month: 'short' }))),
     h('div', { class: 'item-main' },
       h('div', { class: 'row', style: 'gap:8px;flex-wrap:nowrap' }, h('div', { class: 'item-title' }, ev.title), status),
-      h('div', { class: 'item-sub' }, `${fmtWhen(ev.startsAt)} · ${ev.durationMin} min`)),
+      h('div', { class: 'item-sub' }, `${fmtWhen(ev.startsAt)} · ${ev.durationMin} min${ev.reminders ? ` · 🔔 ${ev.reminders} will be reminded` : ''}`)),
     h('div', { class: 'item-actions' },
       past ? null : h('a', { class: 'btn sm primary', href: studioUrl(ev), html: `${icon('play', 14)}${ev.live ? 'Rejoin' : 'Start'}` }),
       h('button', { class: 'btn sm icon', title: 'Copy link', 'aria-label': 'Copy link', onclick: () => copy(url), html: icon('link', 16) }),

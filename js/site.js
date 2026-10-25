@@ -1,5 +1,5 @@
 // ─── Shared helpers for the site pages (home, class page, dashboard) ──
-import { icon } from './live/icons.js?v=d21b2415';
+import { icon } from './live/icons.js?v=36ab7949';
 
 export { icon };
 export const CFG = window.EEM26_CONFIG || {};
@@ -112,7 +112,9 @@ export function downloadIcs(ev, url) {
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EEM26//Live Class//EN', 'BEGIN:VEVENT',
     `UID:${ev.id}@eem26`, `DTSTAMP:${stamp(Date.now())}`, `DTSTART:${stamp(ev.startsAt)}`, `DTEND:${stamp(end)}`,
     `SUMMARY:${esc(ev.title)}`, `DESCRIPTION:${esc(`${ev.description ? `${ev.description}\n\n` : ''}Join: ${url}`)}`, `URL:${url}`,
-    'BEGIN:VALARM', 'TRIGGER:-PT15M', 'ACTION:DISPLAY', `DESCRIPTION:${esc(ev.title)} starts in 15 minutes`, 'END:VALARM',
+    // three reminders: a day, an hour and 10 minutes before
+    ...[['-P1D', 'tomorrow'], ['-PT1H', 'in 1 hour'], ['-PT10M', 'in 10 minutes']].flatMap(([t, when]) => [
+      'BEGIN:VALARM', `TRIGGER:${t}`, 'ACTION:DISPLAY', `DESCRIPTION:${esc(ev.title)} starts ${when}`, 'END:VALARM']),
     'END:VEVENT', 'END:VCALENDAR',
   ].join('\r\n');
   const a = h('a', { href: URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })), download: `${ev.title.replace(/[^\w ]+/g, '').trim() || 'class'}.ics` });

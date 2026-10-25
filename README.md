@@ -87,6 +87,22 @@ You don't run any server of your own.
 ### 3. Publish
 Merge to `main`. The GitHub Pages workflow publishes the site. Then open `/host.html`, sign in and click **Start the class**.
 
+### Class reminders
+
+People who open a class link and tap **Remind me & join automatically** get
+push notifications 1 day, 1 hour and 10 minutes before, and a "Live now — tap
+to join" alert when the presenter opens the room. Tapping any of them opens
+the class page, which takes them in as soon as the class is live.
+
+- `sw.js` shows the notifications; `supabase/functions/classroom/webpush.js`
+  encrypts and signs them (plain WebCrypto, no extra service or account).
+- The `lv-reminders` pg_cron job calls the function every minute
+  (`remind-run`, checked against the Vault secret `lv_cron_secret`).
+- The push key pair is created by the function on first use and kept in
+  Vault (`lv_vapid_public`, `lv_vapid_private`).
+- iPhone: only works after "Add to Home Screen" (iOS 16.4+); the page says
+  so and offers a calendar file with the same 3 alarms.
+
 ### How far the free allowance goes
 Only traffic **to** viewers counts. A 90-minute class with 200 viewers uses roughly **70–160 GB**, depending on how much of the screen moves and how many viewers are on phones (they get the light layer). That's about **6–12 classes a month** inside the free 1,000 GB. Cloudflare's dashboard shows your usage. Past 1,000 GB the price is $0.05/GB, so set a usage alert if you're close.
 
@@ -119,6 +135,9 @@ npm install
 npm run fakesfu        # local stand-in for Cloudflare Realtime SFU (needs Go)
 npm run dev            # http://localhost:5173, host password "test"
 npm run test:e2e       # 26 end-to-end checks in headless Chromium
+node dev/reminders-test.mjs   # reminder schedule + push encryption (no server needed)
+node dev/webpush-test.mjs     # push encryption against RFC 8291's example
+node dev/schedule-e2e.mjs     # scheduling, reminders, auto-join
 (cd dev/fakesfu && go build -o loadbot ./loadbot) && LOADBOT=dev/fakesfu/loadbot npm run test:load
 ```
 
