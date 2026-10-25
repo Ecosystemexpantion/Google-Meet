@@ -140,7 +140,7 @@ function item(ev, past) {
     h('div', { class: 'datebox' }, h('b', {}, d.getDate()), h('span', {}, d.toLocaleDateString(undefined, { month: 'short' }))),
     h('div', { class: 'item-main' },
       h('div', { class: 'row', style: 'gap:8px;flex-wrap:nowrap' }, h('div', { class: 'item-title' }, ev.title), status),
-      h('div', { class: 'item-sub' }, `${fmtWhen(ev.startsAt)} · ${ev.durationMin} min`)),
+      h('div', { class: 'item-sub' }, `${fmtWhen(ev.startsAt)} · ${ev.durationMin} min${ev.reminders ? ` · 🔔 ${ev.reminders} will be reminded` : ''}`)),
     h('div', { class: 'item-actions' },
       past ? null : h('a', { class: 'btn sm primary', href: studioUrl(ev), html: `${icon('play', 14)}${ev.live ? 'Rejoin' : 'Start'}` }),
       h('button', { class: 'btn sm icon', title: 'Copy link', 'aria-label': 'Copy link', onclick: () => copy(url), html: icon('link', 16) }),
