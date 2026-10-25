@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHandler, memoryStore } from '../supabase/functions/classroom/handler.js';
+import { newVapidKeys } from '../supabase/functions/classroom/webpush.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.PORT || 5173);
@@ -18,10 +19,12 @@ const env = {
   CF_SFU_APP_TOKEN: 'devtoken',
   CF_SFU_API_BASE: 'http://127.0.0.1:7890/v1',
   HOST_PASSWORD: 'test',
+  CRON_SECRET: 'dev',
+  ...(await newVapidKeys().then((k) => ({ VAPID_PUBLIC: k.publicKey, VAPID_PRIVATE: k.privateKey }))),
   ...process.env,
 };
 const handle = createHandler({ env: (k) => env[k], store: memoryStore() });
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
