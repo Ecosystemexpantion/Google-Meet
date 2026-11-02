@@ -6,11 +6,20 @@
 // Reminders are push notifications (1 day, 1 hour, 10 minutes before and
 // "live now"), sent by the classroom server; sw.js shows them. Tapping one
 // opens this page with ?go=1, which joins as soon as the class is live.
-import { api } from './live/api.js?v=6cf51e5f';
-import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=6cf51e5f';
+import { api } from './live/api.js?v=8af8754a';
+import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=8af8754a';
 
 const q = new URLSearchParams(location.search);
-const id = q.get('e') || '';
+// class.html?e=sunday is a permanent link: it always opens this week's Sunday class
+// (8:00PM Lagos, scheduled automatically as sunYYYYMMDD; it rolls to next week after 10:00PM on Sunday).
+function sundayClassId() {
+  const lagos = new Date(Date.now() + 3600e3); // Lagos is UTC+1 all year; read UTC fields
+  let add = (7 - lagos.getUTCDay()) % 7;
+  if (add === 0 && lagos.getUTCHours() >= 22) add = 7;
+  const d = new Date(lagos.getTime() + add * 86400e3);
+  return `sun${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+const id = (q.get('e') || '').toLowerCase() === 'sunday' ? sundayClassId() : q.get('e') || '';
 const app = $('#app');
 const chip = $('#chip');
 let ev = null;

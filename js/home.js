@@ -1,6 +1,6 @@
 // ─── Home page: the next scheduled class with a live countdown ─────
-import { api } from './live/api.js?v=6cf51e5f';
-import { $, h, icon, orbit, fmtDate, fmtTime, fmtZone, classUrl } from './site.js?v=6cf51e5f';
+import { api } from './live/api.js?v=8af8754a';
+import { $, h, icon, orbit, fmtDate, fmtTime, fmtZone, classUrl } from './site.js?v=8af8754a';
 
 for (const el of document.querySelectorAll('[data-i]')) el.innerHTML = icon(el.dataset.i, 22);
 
