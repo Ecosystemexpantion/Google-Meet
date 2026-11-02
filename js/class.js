@@ -10,7 +10,16 @@ import { api } from './live/api.js?v=__BUILD__';
 import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=__BUILD__';
 
 const q = new URLSearchParams(location.search);
-const id = q.get('e') || '';
+// class.html?e=sunday is a permanent link: it always opens this week's Sunday class
+// (8:00PM Lagos, scheduled automatically as sunYYYYMMDD; it rolls to next week after 10:00PM on Sunday).
+function sundayClassId() {
+  const lagos = new Date(Date.now() + 3600e3); // Lagos is UTC+1 all year; read UTC fields
+  let add = (7 - lagos.getUTCDay()) % 7;
+  if (add === 0 && lagos.getUTCHours() >= 22) add = 7;
+  const d = new Date(lagos.getTime() + add * 86400e3);
+  return `sun${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+const id = (q.get('e') || '').toLowerCase() === 'sunday' ? sundayClassId() : q.get('e') || '';
 const app = $('#app');
 const chip = $('#chip');
 let ev = null;
