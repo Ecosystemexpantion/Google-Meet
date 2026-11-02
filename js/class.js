@@ -6,8 +6,8 @@
 // Reminders are push notifications (1 day, 1 hour, 10 minutes before and
 // "live now"), sent by the classroom server; sw.js shows them. Tapping one
 // opens this page with ?go=1, which joins as soon as the class is live.
-import { api } from './live/api.js?v=36ab7949';
-import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=36ab7949';
+import { api } from './live/api.js?v=6cf51e5f';
+import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=6cf51e5f';
 
 const q = new URLSearchParams(location.search);
 const id = q.get('e') || '';
@@ -21,6 +21,11 @@ let reminders = 'off';
 const REM_KEY = `eem26_rem_${id}`;
 const remindBox = h('div', { class: 'remind' });
 const clock = orbit();
+// Personal links from OmniReach reminders carry the person's name (n) and a private id (pid), so they
+// don't have to type their name and the host can see which registrants attended.
+const linkPid = /^[A-Za-z0-9-]{8,48}$/.test(q.get('pid') || '') ? q.get('pid') : '';
+if (linkPid) localStorage.setItem('eem26_pid', linkPid);
+if ((q.get('n') || '').trim().length >= 2) localStorage.setItem('eem26_name', q.get('n').trim().slice(0, 40));
 const nameIn = h('input', { class: 'input', id: 'name', maxlength: 40, placeholder: 'Your name', autocomplete: 'name', value: localStorage.getItem('eem26_name') || '' });
 const joinBtn = h('button', { class: 'btn primary lg block', id: 'join' });
 const note = h('p', { class: 'fine' });
@@ -42,6 +47,8 @@ function join() {
     return;
   }
   const q = new URLSearchParams({ rm: ev.room, n: name, t: ev.title, go: 1 });
+  const pid = localStorage.getItem('eem26_pid');
+  if (pid && /^[A-Za-z0-9-]{8,48}$/.test(pid)) q.set('pid', pid);
   location.href = `room.html?${q}`;
 }
 joinBtn.addEventListener('click', join);
