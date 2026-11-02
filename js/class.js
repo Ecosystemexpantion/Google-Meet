@@ -21,6 +21,11 @@ let reminders = 'off';
 const REM_KEY = `eem26_rem_${id}`;
 const remindBox = h('div', { class: 'remind' });
 const clock = orbit();
+// Personal links from OmniReach reminders carry the person's name (n) and a private id (pid), so they
+// don't have to type their name and the host can see which registrants attended.
+const linkPid = /^[A-Za-z0-9-]{8,48}$/.test(q.get('pid') || '') ? q.get('pid') : '';
+if (linkPid) localStorage.setItem('eem26_pid', linkPid);
+if ((q.get('n') || '').trim().length >= 2) localStorage.setItem('eem26_name', q.get('n').trim().slice(0, 40));
 const nameIn = h('input', { class: 'input', id: 'name', maxlength: 40, placeholder: 'Your name', autocomplete: 'name', value: localStorage.getItem('eem26_name') || '' });
 const joinBtn = h('button', { class: 'btn primary lg block', id: 'join' });
 const note = h('p', { class: 'fine' });
@@ -42,6 +47,8 @@ function join() {
     return;
   }
   const q = new URLSearchParams({ rm: ev.room, n: name, t: ev.title, go: 1 });
+  const pid = localStorage.getItem('eem26_pid');
+  if (pid && /^[A-Za-z0-9-]{8,48}$/.test(pid)) q.set('pid', pid);
   location.href = `room.html?${q}`;
 }
 joinBtn.addEventListener('click', join);
