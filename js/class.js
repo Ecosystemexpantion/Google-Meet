@@ -35,6 +35,21 @@ const clock = orbit();
 const linkPid = /^[A-Za-z0-9-]{8,48}$/.test(q.get('pid') || '') ? q.get('pid') : '';
 if (linkPid) localStorage.setItem('eem26_pid', linkPid);
 if ((q.get('n') || '').trim().length >= 2) localStorage.setItem('eem26_name', q.get('n').trim().slice(0, 40));
+// Tell OmniReach someone opened this class page, so the coach's app can show how many people to expect.
+// Registrants count by their private id; anyone else by a random id kept on this phone.
+(function countOpen() {
+  if (!id) return;
+  let who = linkPid || localStorage.getItem('eem26_pid') || '';
+  if (!/^[A-Za-z0-9-]{8,48}$/.test(who)) {
+    who = localStorage.getItem('eem26_dev') || '';
+    if (!who) {
+      who = 'dev-' + Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem('eem26_dev', who);
+    }
+  }
+  const body = new URLSearchParams({ action: 'link_open', e: id, who });
+  fetch('https://leqizarzgfpiriknpnxw.supabase.co/functions/v1/omnireach', { method: 'POST', body, keepalive: true }).catch(() => {});
+})();
 const nameIn = h('input', { class: 'input', id: 'name', maxlength: 40, placeholder: 'Your name', autocomplete: 'name', value: localStorage.getItem('eem26_name') || '' });
 const joinBtn = h('button', { class: 'btn primary lg block', id: 'join' });
 const note = h('p', { class: 'fine' });
