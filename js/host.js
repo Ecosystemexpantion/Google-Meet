@@ -1,8 +1,8 @@
 // ─── Presenter: sign in, schedule classes, share links, start ─────
 // The password is checked by the server (HOST_PASSWORD secret); it is kept in
 // this device for 12 hours (see keep), so leaving the app doesn't sign out.
-import { api, keep } from './live/api.js?v=3019157d';
-import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=3019157d';
+import { api, keep } from './live/api.js?v=caf38e52';
+import { $, h, icon, CFG, toast, fmtWhen, fmtZone, classUrl, copy, share, whatsapp } from './site.js?v=caf38e52';
 
 const main = $('#main');
 const signout = $('#signout');

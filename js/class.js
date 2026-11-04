@@ -6,8 +6,8 @@
 // Reminders are push notifications (1 day, 1 hour, 10 minutes before and
 // "live now"), sent by the classroom server; sw.js shows them. Tapping one
 // opens this page with ?go=1, which joins as soon as the class is live.
-import { api } from './live/api.js?v=3019157d';
-import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=3019157d';
+import { api } from './live/api.js?v=caf38e52';
+import { $, h, icon, CFG, orbit, fmtDate, fmtTime, fmtZone, googleCalendar, downloadIcs, share, classUrl } from './site.js?v=caf38e52';
 
 const q = new URLSearchParams(location.search);
 // class.html?e=sunday is a permanent link: it always opens this week's Sunday class
@@ -47,7 +47,8 @@ if ((q.get('n') || '').trim().length >= 2) localStorage.setItem('eem26_name', q.
       localStorage.setItem('eem26_dev', who);
     }
   }
-  const body = new URLSearchParams({ action: 'link_open', e: id, who });
+  // src=em marks a click on the link inside an OmniReach email, so the coach can see that email was seen.
+  const body = new URLSearchParams({ action: 'link_open', e: id, who, src: (q.get('src') || '').slice(0, 10) });
   fetch('https://leqizarzgfpiriknpnxw.supabase.co/functions/v1/omnireach', { method: 'POST', body, keepalive: true }).catch(() => {});
 })();
 const nameIn = h('input', { class: 'input', id: 'name', maxlength: 40, placeholder: 'Your name', autocomplete: 'name', value: localStorage.getItem('eem26_name') || '' });
