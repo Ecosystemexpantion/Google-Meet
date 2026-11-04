@@ -47,7 +47,8 @@ if ((q.get('n') || '').trim().length >= 2) localStorage.setItem('eem26_name', q.
       localStorage.setItem('eem26_dev', who);
     }
   }
-  const body = new URLSearchParams({ action: 'link_open', e: id, who });
+  // src=em marks a click on the link inside an OmniReach email, so the coach can see that email was seen.
+  const body = new URLSearchParams({ action: 'link_open', e: id, who, src: (q.get('src') || '').slice(0, 10) });
   fetch('https://leqizarzgfpiriknpnxw.supabase.co/functions/v1/omnireach', { method: 'POST', body, keepalive: true }).catch(() => {});
 })();
 const nameIn = h('input', { class: 'input', id: 'name', maxlength: 40, placeholder: 'Your name', autocomplete: 'name', value: localStorage.getItem('eem26_name') || '' });
